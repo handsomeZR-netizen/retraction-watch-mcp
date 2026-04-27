@@ -1,6 +1,22 @@
 import type { Metadata } from "next";
-import "./globals.css";
+import { Inter, Noto_Sans_SC } from "next/font/google";
 import Link from "next/link";
+import "./globals.css";
+import { NavLinks } from "@/components/NavLinks";
+import { StatusDot } from "@/components/StatusDot";
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+});
+
+const notoSansSC = Noto_Sans_SC({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+  variable: "--font-noto-sc",
+});
 
 export const metadata: Metadata = {
   title: "RW Screen — 学术诚信筛查",
@@ -14,35 +30,56 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" className={`${inter.variable} ${notoSansSC.variable}`}>
       <body>
-        <header className="border-b border-white/10">
-          <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-            <Link href="/" className="text-lg font-semibold">
-              RW Screen
-            </Link>
-            <nav className="flex items-center gap-4 text-sm text-slate-300">
-              <Link href="/" className="hover:text-white">
-                首页
-              </Link>
-              <Link href="/settings" className="hover:text-white">
-                设置
-              </Link>
-              <a
-                href="https://retractionwatch.com/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-white"
+        <header className="sticky top-0 z-30 backdrop-blur-md bg-[var(--bg-0)]/70 border-b border-white/5">
+          <div className="max-w-6xl mx-auto px-6 py-3.5 flex items-center justify-between gap-4">
+            <Link
+              href="/"
+              className="flex items-center gap-2.5 group"
+              aria-label="RW Screen home"
+            >
+              <span
+                aria-hidden
+                className="w-7 h-7 rounded-lg flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-500 shadow-lg shadow-blue-500/20 text-white font-semibold text-sm"
               >
-                Retraction Watch
-              </a>
+                RW
+              </span>
+              <span className="text-base font-semibold tracking-tight">
+                RW Screen
+              </span>
+              <span className="text-[10px] uppercase tracking-wider text-slate-500 hidden sm:inline">
+                学术诚信筛查
+              </span>
+            </Link>
+            <nav className="flex items-center gap-5">
+              <NavLinks />
+              <span className="hidden md:flex pl-3 border-l border-white/10">
+                <StatusDot />
+              </span>
             </nav>
           </div>
         </header>
-        <main className="max-w-6xl mx-auto px-6 py-8">{children}</main>
-        <footer className="border-t border-white/10 mt-12">
-          <div className="max-w-6xl mx-auto px-6 py-6 text-xs text-slate-400">
-            本系统仅辅助筛查，不作为学术不端裁定的终审依据。结果应由编辑或评审人员人工复核。
+
+        <main className="max-w-6xl mx-auto px-6 py-10">{children}</main>
+
+        <footer className="mt-16 border-t border-white/5">
+          <div className="max-w-6xl mx-auto px-6 py-6 flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-xs text-slate-500">
+            <span>
+              © RW Screen · 本系统仅辅助筛查，不作为学术不端裁定的终审依据
+            </span>
+            <div className="flex items-center gap-3">
+              <a
+                href="https://github.com/handsomeZR-netizen/retraction-watch-mcp"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-slate-300"
+              >
+                GitHub
+              </a>
+              <span className="text-slate-700">·</span>
+              <span>v0.2.0-dev</span>
+            </div>
           </div>
         </footer>
       </body>
