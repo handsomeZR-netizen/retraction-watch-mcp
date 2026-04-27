@@ -1,4 +1,4 @@
-import clsx from "clsx";
+import { cn } from "@/lib/utils";
 import { CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
 
 export type Verdict = "PASS" | "REVIEW" | "FAIL";
@@ -10,7 +10,7 @@ const META: Record<
     sub: string;
     badgeClass: string;
     icon: typeof CheckCircle2;
-    iconBg: string;
+    ringClass: string;
   }
 > = {
   PASS: {
@@ -18,21 +18,21 @@ const META: Record<
     sub: "未发现引用了撤稿数据库中的文献",
     badgeClass: "badge-pass",
     icon: CheckCircle2,
-    iconBg: "bg-emerald-500/10 text-emerald-400 ring-emerald-400/30",
+    ringClass: "bg-success/10 text-success ring-success/30",
   },
   REVIEW: {
     label: "待复核",
     sub: "存在弱匹配；建议人工复核",
     badgeClass: "badge-review",
     icon: AlertTriangle,
-    iconBg: "bg-amber-500/10 text-amber-400 ring-amber-400/30",
+    ringClass: "bg-warning/10 text-warning ring-warning/30",
   },
   FAIL: {
     label: "不通过",
     sub: "至少 1 条参考文献已确认为撤稿文献",
     badgeClass: "badge-fail",
     icon: XCircle,
-    iconBg: "bg-rose-500/10 text-rose-400 ring-rose-400/30",
+    ringClass: "bg-destructive/10 text-destructive ring-destructive/30",
   },
 };
 
@@ -53,22 +53,22 @@ export function VerdictCard({
   const Icon = m.icon;
   return (
     <div className="grid lg:grid-cols-[auto_1fr] gap-6 items-stretch">
-      <div className="flex flex-col items-center justify-center px-6 py-5 rounded-xl bg-white/[0.02] border border-white/10 min-w-[200px]">
+      <div className="flex flex-col items-center justify-center px-6 py-5 rounded-md surface-2 min-w-[200px]">
         <div
-          className={clsx(
+          className={cn(
             "w-14 h-14 rounded-full flex items-center justify-center ring-2",
-            m.iconBg,
+            m.ringClass,
           )}
         >
           <Icon className="w-7 h-7" strokeWidth={2.1} />
         </div>
-        <span className={clsx("badge badge-lg mt-3", m.badgeClass)}>
+        <span className={cn("badge badge-lg mt-3", m.badgeClass)}>
           {verdict}
         </span>
-        <div className="text-base font-medium text-slate-100 mt-3">
+        <div className="text-base font-medium text-foreground mt-3">
           {m.label}
         </div>
-        <div className="text-xs text-slate-400 mt-1 text-center max-w-[180px]">
+        <div className="text-xs text-muted-foreground mt-1 text-center max-w-[180px]">
           {m.sub}
         </div>
       </div>
@@ -101,18 +101,18 @@ function Tile({
   accent: "pass" | "review" | "fail" | "info" | "muted";
 }) {
   const colorClass = {
-    pass: "text-emerald-300",
-    review: "text-amber-300",
-    fail: "text-rose-300",
-    info: "text-blue-300",
-    muted: "text-slate-400",
+    pass: "text-success",
+    review: "text-warning",
+    fail: "text-destructive",
+    info: "text-primary",
+    muted: "text-muted-foreground",
   }[accent];
   return (
-    <div className="px-4 py-4 rounded-xl bg-white/[0.02] border border-white/10">
-      <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">
+    <div className="px-4 py-4 rounded-md surface-2">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
         {label}
       </div>
-      <div className={clsx("text-2xl font-semibold mt-1 tabular-nums", colorClass)}>
+      <div className={cn("text-2xl font-semibold mt-1 tabular-nums", colorClass)}>
         {value}
       </div>
     </div>

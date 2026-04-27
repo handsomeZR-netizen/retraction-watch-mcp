@@ -1,9 +1,9 @@
-import clsx from "clsx";
+import { cn } from "@/lib/utils";
 
 export function Spinner({ size = "sm" }: { size?: "sm" | "lg" }) {
   return (
     <span
-      className={clsx("spinner", size === "lg" && "spinner-lg")}
+      className={cn("spinner", size === "lg" && "spinner-lg")}
       aria-label="loading"
     />
   );

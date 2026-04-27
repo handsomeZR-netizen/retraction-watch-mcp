@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Database, FileSearch, Lock, ShieldCheck, Sparkles } from "lucide-react";
 import { Dropzone } from "@/components/Dropzone";
-import { ProgressTimeline, type Stage, type TimelineEvent } from "@/components/ProgressTimeline";
+import { ProgressTimeline, type TimelineEvent } from "@/components/ProgressTimeline";
 
 export default function HomePage() {
   const router = useRouter();
@@ -78,28 +78,26 @@ export default function HomePage() {
     <div className="space-y-10">
       <section className="grid lg:grid-cols-[1.4fr_1fr] gap-8 items-start">
         <div className="space-y-5">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs bg-blue-500/10 border border-blue-500/20 text-blue-300">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs bg-primary/10 border border-primary/20 text-primary">
             <Sparkles className="w-3 h-3" />
             学术诚信筛查 · 本地优先
           </div>
-          <h1 className="text-4xl md:text-5xl font-semibold tracking-tight leading-[1.1]">
+          <h1 className="text-4xl md:text-5xl font-semibold tracking-tight leading-[1.1] text-foreground">
             一键检测稿件是否
             <br />
-            <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-              引用了撤稿文献
-            </span>
+            <span className="text-primary">引用了撤稿文献</span>
           </h1>
-          <p className="text-slate-400 text-base leading-relaxed max-w-xl">
+          <p className="text-muted-foreground text-base leading-relaxed max-w-xl">
             拖拽 PDF / Word / LaTeX 文件到下方，自动抽取作者信息和参考文献，并比对本地
             Retraction Watch 数据库。引用了已撤稿文献的稿件会标记为不通过。
             所有解析默认在本地完成；启用 LLM 增强或云 OCR 才会发起出网请求。
           </p>
-          <div className="flex items-center gap-5 text-xs text-slate-500 pt-2">
+          <div className="flex items-center gap-5 text-xs text-muted-foreground pt-2">
             <span className="inline-flex items-center gap-1.5">
               <Database className="w-3.5 h-3.5" /> Retraction Watch 全量
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5" /> 三档裁决（PASS/REVIEW/FAIL）
+              <ShieldCheck className="w-3.5 h-3.5" /> 三档裁决
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Lock className="w-3.5 h-3.5" /> 隐私优先
@@ -113,7 +111,7 @@ export default function HomePage() {
       </section>
 
       {error && (
-        <div className="surface px-4 py-3 border border-rose-500/30 bg-rose-500/5 text-rose-200 text-sm fade-in-up">
+        <div className="surface px-4 py-3 border-destructive/40 bg-destructive/5 text-destructive text-sm fade-in-up">
           ✗ {error}
         </div>
       )}
@@ -121,7 +119,7 @@ export default function HomePage() {
       {events.length > 0 && (
         <section className="surface p-6 fade-in-up">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold">解析进度</h2>
+            <h2 className="text-base font-semibold text-foreground">解析进度</h2>
             {fileLabel && (
               <span className="badge badge-muted code">{fileLabel}</span>
             )}
@@ -161,10 +159,10 @@ function FeatureCard({
   desc: string;
 }) {
   return (
-    <div className="surface px-5 py-5 surface-hover transition-colors">
-      <Icon className="w-5 h-5 text-blue-400 mb-3" strokeWidth={1.8} />
-      <h3 className="text-sm font-semibold mb-1.5">{title}</h3>
-      <p className="text-xs text-slate-400 leading-relaxed">{desc}</p>
+    <div className="surface px-5 py-5 surface-hover">
+      <Icon className="w-5 h-5 text-primary mb-3" strokeWidth={1.8} />
+      <h3 className="text-sm font-semibold mb-1.5 text-foreground">{title}</h3>
+      <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
     </div>
   );
 }

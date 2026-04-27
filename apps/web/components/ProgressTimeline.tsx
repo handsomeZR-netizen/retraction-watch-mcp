@@ -1,6 +1,6 @@
 "use client";
 
-import clsx from "clsx";
+import { cn } from "@/lib/utils";
 import {
   Check,
   CircleAlert,
@@ -70,47 +70,43 @@ export function ProgressTimeline({ events }: { events: TimelineEvent[] }) {
         return (
           <li
             key={s}
-            className={clsx(
-              "flex items-start gap-3 px-3 py-2 rounded-lg transition-colors fade-in-up",
-              reached ? "bg-white/[0.03]" : "opacity-40",
+            className={cn(
+              "flex items-start gap-3 px-3 py-2 rounded-md transition-colors fade-in-up",
+              reached ? "bg-muted/50" : "opacity-50",
             )}
             style={
               reached ? { animationDelay: `${STAGE_ORDER.indexOf(s) * 40}ms` } : undefined
             }
           >
             <span
-              className={clsx(
+              className={cn(
                 "shrink-0 w-7 h-7 rounded-full flex items-center justify-center mt-0.5",
-                reached && !active && s !== "error"
-                  ? "bg-emerald-500/15 text-emerald-300"
-                  : active
-                    ? "bg-blue-500/15 text-blue-300"
-                    : s === "error" && reached
-                      ? "bg-red-500/15 text-red-300"
-                      : "bg-white/5 text-slate-500",
+                active
+                  ? "bg-primary/15 text-primary"
+                  : reached
+                    ? "bg-success/15 text-success"
+                    : "bg-muted text-muted-foreground",
               )}
             >
               {active ? (
                 <Spinner />
-              ) : reached ? (
-                <Icon className="w-3.5 h-3.5" strokeWidth={2.2} />
               ) : (
-                <Icon className="w-3.5 h-3.5" strokeWidth={1.6} />
+                <Icon className="w-3.5 h-3.5" strokeWidth={2.2} />
               )}
             </span>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">
+                <span className="text-sm font-medium text-foreground">
                   {STAGE_META[s].label}
                 </span>
                 {active && (
-                  <span className="text-[10px] text-blue-300 uppercase tracking-wider pulse-soft">
+                  <span className="text-[10px] text-primary uppercase tracking-wider pulse-soft">
                     进行中
                   </span>
                 )}
               </div>
               {ev?.message && (
-                <div className="text-xs text-slate-400 mt-0.5 truncate">
+                <div className="text-xs text-muted-foreground mt-0.5 truncate">
                   {ev.message}
                 </div>
               )}
@@ -119,9 +115,9 @@ export function ProgressTimeline({ events }: { events: TimelineEvent[] }) {
         );
       })}
       {errored && (
-        <li className="flex items-start gap-3 px-3 py-2 rounded-lg bg-red-500/5 border border-red-500/20 fade-in-up">
-          <CircleAlert className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
-          <div className="flex-1 text-sm text-red-200">
+        <li className="flex items-start gap-3 px-3 py-2 rounded-md bg-destructive/5 border border-destructive/30 fade-in-up">
+          <CircleAlert className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+          <div className="flex-1 text-sm text-destructive">
             {events.find((e) => e.stage === "error")?.message ?? "未知错误"}
           </div>
         </li>

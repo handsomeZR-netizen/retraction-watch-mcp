@@ -45,7 +45,7 @@ export function StatusDot() {
 
   return (
     <div
-      className="flex items-center gap-2 text-xs text-slate-400"
+      className="flex items-center gap-2 text-xs text-muted-foreground"
       title={info}
     >
       <span

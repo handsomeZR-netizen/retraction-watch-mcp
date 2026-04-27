@@ -518,7 +518,21 @@ rw_records (record_id PK)
 
 ## 📦 部署
 
-### Docker（推荐）
+### 零成本零绑卡方案：Cloudflare Tunnel
+
+**最推荐的低风险演示部署**，详细步骤见 [docs/DEPLOY-CLOUDFLARE.md](./docs/DEPLOY-CLOUDFLARE.md)。一句话上手：
+
+```bash
+# 终端 A
+RW_MCP_DB_PATH=/abs/path/retraction-watch.sqlite npm run dev:web
+
+# 终端 B
+cloudflared tunnel --url http://localhost:3210
+```
+
+立刻拿到 `https://*.trycloudflare.com` 的临时 HTTPS 公网 URL。绑自有域名 + 加 Cloudflare Access 鉴权全部免费。
+
+### Docker（自托管 24×7）
 
 ```bash
 mkdir -p ./data ./config

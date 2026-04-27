@@ -1,10 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import clsx from "clsx";
+import { cn } from "@/lib/utils";
 import {
   ChevronRight,
-  CircleCheck,
   CircleSlash,
   ExternalLink,
   Search,
@@ -47,16 +46,16 @@ export function ReferenceTable({ entries }: { entries: Entry[] }) {
 
   return (
     <div className="surface overflow-hidden">
-      <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between flex-wrap gap-3">
+      <div className="px-5 py-4 border-b border-border flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-base font-semibold">参考文献比对</h2>
+          <h2 className="text-base font-semibold text-foreground">参考文献比对</h2>
           <span className="badge badge-muted">
             {filtered.length} / {entries.length}
           </span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
-            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="search"
               value={query}
@@ -65,16 +64,16 @@ export function ReferenceTable({ entries }: { entries: Entry[] }) {
               className="input !py-1.5 !pl-8 !pr-3 text-sm w-60"
             />
           </div>
-          <div className="flex items-center gap-1 p-1 rounded-lg bg-white/5">
+          <div className="flex items-center gap-1 p-1 rounded-md bg-muted">
             {VERDICT_FILTERS.map((f) => (
               <button
                 key={f.key}
                 onClick={() => setFilter(f.key)}
-                className={clsx(
-                  "px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
+                className={cn(
+                  "px-2.5 py-1 rounded-sm text-xs font-medium transition-colors",
                   filter === f.key
-                    ? "bg-white/10 text-white"
-                    : "text-slate-400 hover:text-slate-200",
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 {f.label}
@@ -84,9 +83,9 @@ export function ReferenceTable({ entries }: { entries: Entry[] }) {
         </div>
       </div>
 
-      <ul className="divide-y divide-white/5">
+      <ul className="divide-y divide-border">
         {filtered.length === 0 && (
-          <li className="px-5 py-10 text-sm text-slate-400 text-center">
+          <li className="px-5 py-10 text-sm text-muted-foreground text-center">
             没有匹配的条目
           </li>
         )}
@@ -95,7 +94,7 @@ export function ReferenceTable({ entries }: { entries: Entry[] }) {
           return (
             <li
               key={originalIndex}
-              className={clsx(
+              className={cn(
                 entry.result.verdict === "confirmed" && "row-hit",
                 (entry.result.verdict === "likely_match" ||
                   entry.result.verdict === "possible_match") &&
@@ -104,23 +103,23 @@ export function ReferenceTable({ entries }: { entries: Entry[] }) {
             >
               <button
                 onClick={() => setOpenIdx(open ? null : originalIndex)}
-                className="w-full text-left px-5 py-3.5 flex items-start gap-3 hover:bg-white/[0.02] transition-colors"
+                className="w-full text-left px-5 py-3.5 flex items-start gap-3 hover:bg-muted/40 transition-colors"
               >
-                <span className="text-xs text-slate-500 w-7 shrink-0 mt-0.5 tabular-nums">
+                <span className="text-xs text-muted-foreground w-7 shrink-0 mt-0.5 tabular-nums">
                   #{originalIndex + 1}
                 </span>
                 <VerdictIcon verdict={entry.result.verdict} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-slate-100 line-clamp-2">
+                  <div className="text-sm font-medium text-foreground line-clamp-2">
                     {entry.reference.title || entry.reference.raw.slice(0, 200)}
                   </div>
-                  <div className="text-xs text-slate-400 mt-1 truncate">
+                  <div className="text-xs text-muted-foreground mt-1 truncate">
                     {entry.reference.authors.length > 0
                       ? entry.reference.authors.slice(0, 3).join(", ") +
                         (entry.reference.authors.length > 3 ? " et al." : "")
                       : ""}
                     {entry.reference.year && (
-                      <span className="text-slate-500"> · {entry.reference.year}</span>
+                      <span> · {entry.reference.year}</span>
                     )}
                     {entry.reference.doi && (
                       <a
@@ -128,7 +127,7 @@ export function ReferenceTable({ entries }: { entries: Entry[] }) {
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        className="text-slate-500 code ml-2 hover:text-blue-300 inline-flex items-center gap-1"
+                        className="code ml-2 hover:text-primary inline-flex items-center gap-1"
                       >
                         {entry.reference.doi}
                         <ExternalLink className="w-3 h-3" />
@@ -137,8 +136,8 @@ export function ReferenceTable({ entries }: { entries: Entry[] }) {
                   </div>
                 </div>
                 <ChevronRight
-                  className={clsx(
-                    "w-4 h-4 text-slate-500 mt-1 shrink-0 transition-transform",
+                  className={cn(
+                    "w-4 h-4 text-muted-foreground mt-1 shrink-0 transition-transform",
                     open && "rotate-90",
                   )}
                 />
@@ -146,40 +145,40 @@ export function ReferenceTable({ entries }: { entries: Entry[] }) {
 
               {open && (
                 <div className="px-5 pb-5 pl-[3.75rem] fade-in-up">
-                  <div className="text-xs text-slate-500 mb-3 leading-relaxed">
-                    <span className="text-slate-400 font-medium">原文：</span>
+                  <div className="text-xs text-muted-foreground mb-3 leading-relaxed">
+                    <span className="text-foreground font-medium">原文：</span>
                     {entry.reference.raw}
                   </div>
                   {entry.result.bestCandidate && (
                     <div className="surface-2 p-4 mb-3">
                       <div className="flex items-center justify-between gap-2 mb-2">
-                        <span className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">
+                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
                           匹配到 RW 记录
                         </span>
-                        <span className="code text-xs text-slate-500">
+                        <span className="code text-xs text-muted-foreground">
                           score {entry.result.bestCandidate.score.toFixed(2)} · #
                           {entry.result.bestCandidate.record.recordId}
                         </span>
                       </div>
-                      <div className="text-sm font-medium text-slate-100">
+                      <div className="text-sm font-medium text-foreground">
                         {entry.result.bestCandidate.record.title}
                       </div>
-                      <div className="text-xs text-slate-400 mt-1.5 space-y-0.5">
+                      <div className="text-xs text-muted-foreground mt-1.5 space-y-0.5">
                         <div>
-                          <span className="text-slate-500">作者：</span>
+                          <span className="text-foreground/70">作者：</span>
                           {entry.result.bestCandidate.record.author}
                         </div>
                         <div>
-                          <span className="text-slate-500">期刊：</span>
+                          <span className="text-foreground/70">期刊：</span>
                           {entry.result.bestCandidate.record.journal}
                         </div>
                         <div>
-                          <span className="text-slate-500">类型：</span>
+                          <span className="text-foreground/70">类型：</span>
                           {entry.result.bestCandidate.record.retractionNature} · {entry.result.bestCandidate.record.retractionDate}
                         </div>
                         {entry.result.bestCandidate.record.reason && (
-                          <div className="text-amber-200/90">
-                            <span className="text-slate-500">原因：</span>
+                          <div className="text-warning">
+                            <span className="text-foreground/70">原因：</span>
                             {entry.result.bestCandidate.record.reason}
                           </div>
                         )}
@@ -210,15 +209,15 @@ function VerdictIcon({ verdict }: { verdict: ReferenceVerdict }) {
           : ShieldCheck;
   const colorClass =
     verdict === "confirmed"
-      ? "text-rose-400"
+      ? "text-destructive"
       : verdict === "likely_match"
-        ? "text-amber-400"
+        ? "text-warning"
         : verdict === "possible_match"
-          ? "text-amber-300"
-          : "text-emerald-400";
+          ? "text-warning"
+          : "text-success";
   return (
     <Icon
-      className={clsx("w-4 h-4 mt-0.5 shrink-0", colorClass)}
+      className={cn("w-4 h-4 mt-0.5 shrink-0", colorClass)}
       strokeWidth={2.1}
     />
   );

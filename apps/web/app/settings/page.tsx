@@ -11,6 +11,7 @@ import {
   Save,
   ShieldCheck,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface PublicConfig {
   llm: {
@@ -85,8 +86,8 @@ export default function SettingsPage() {
   return (
     <div className="max-w-3xl space-y-8">
       <header>
-        <h1 className="text-3xl font-semibold tracking-tight">设置</h1>
-        <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">设置</h1>
+        <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
           所有解析默认在本地完成；只有打开下面的开关才会发起出网请求。API Key 仅保存在服务端配置文件，不会进入 git 也不会回包前端。
         </p>
       </header>
@@ -145,9 +146,7 @@ export default function SettingsPage() {
           <label className="label">
             API Key{" "}
             {config.llm.apiKey === "***" && (
-              <span className="text-emerald-400 font-normal text-xs">
-                · 已保存
-              </span>
+              <span className="text-success font-normal text-xs">· 已保存</span>
             )}
           </label>
           <div className="flex items-center gap-2">
@@ -164,7 +163,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => setShowApiKey(!showApiKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-500 hover:text-slate-200"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-muted-foreground hover:text-foreground"
                 aria-label="toggle visibility"
               >
                 {showApiKey ? (
@@ -187,7 +186,7 @@ export default function SettingsPage() {
               保存 Key
             </button>
           </div>
-          <div className="text-[11px] text-slate-500 mt-1.5">
+          <div className="text-[11px] text-muted-foreground mt-1.5">
             服务端持久化路径：<code className="code">~/.config/rw-screen/config.json</code>
           </div>
         </div>
@@ -244,10 +243,10 @@ export default function SettingsPage() {
         </div>
       </SettingsCard>
 
-      <div className="surface px-4 py-3 text-xs text-slate-400 flex items-start gap-2">
-        <ShieldCheck className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+      <div className="surface px-4 py-3 text-xs text-muted-foreground flex items-start gap-2">
+        <ShieldCheck className="w-4 h-4 text-success mt-0.5 shrink-0" />
         <div>
-          <span className="text-slate-300 font-medium">隐私小贴士</span>
+          <span className="text-foreground font-medium">隐私小贴士</span>
           ：API Key 永远只在服务端持久化，不会回包到前端、不会写入 git。可以通过环境变量
           <code className="code mx-1">DEEPSAPI_API_KEY</code>
           注入而不依赖 UI 配置。
@@ -256,11 +255,12 @@ export default function SettingsPage() {
 
       {status && (
         <div
-          className={
+          className={cn(
+            "fixed bottom-6 right-6 surface px-4 py-2.5 text-sm flex items-center gap-2 fade-in-up",
             status.kind === "ok"
-              ? "fixed bottom-6 right-6 surface px-4 py-2.5 border-emerald-500/30 bg-emerald-500/10 text-emerald-200 text-sm flex items-center gap-2 fade-in-up"
-              : "fixed bottom-6 right-6 surface px-4 py-2.5 border-rose-500/30 bg-rose-500/10 text-rose-200 text-sm fade-in-up"
-          }
+              ? "border-success/30 bg-success/10 text-success"
+              : "border-destructive/30 bg-destructive/10 text-destructive",
+          )}
         >
           {status.kind === "ok" && <Check className="w-4 h-4" />}
           {status.msg}
@@ -284,12 +284,12 @@ function SettingsCard({
   return (
     <section className="surface p-6 space-y-4">
       <header className="flex items-center gap-3">
-        <span className="w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center text-blue-300">
+        <span className="w-9 h-9 rounded-md bg-primary/10 text-primary flex items-center justify-center">
           <Icon className="w-4 h-4" strokeWidth={2} />
         </span>
         <div>
-          <h2 className="text-base font-semibold">{title}</h2>
-          <p className="text-xs text-slate-500 mt-0.5">{sub}</p>
+          <h2 className="text-base font-semibold text-foreground">{title}</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
         </div>
       </header>
       <div className="divider" />
@@ -311,22 +311,22 @@ function Toggle({
 }) {
   return (
     <label
-      className={
-        "flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg surface-2 cursor-pointer hover:border-white/15 transition-colors" +
-        (disabled ? " opacity-50 cursor-not-allowed" : "")
-      }
+      className={cn(
+        "flex items-center justify-between gap-3 px-3 py-2.5 rounded-md surface-2 cursor-pointer hover:border-ring/40 transition-colors",
+        disabled && "opacity-50 cursor-not-allowed",
+      )}
     >
-      <span className="text-sm text-slate-200">{label}</span>
-      <span className="relative inline-flex items-center">
+      <span className="text-sm text-foreground">{label}</span>
+      <span className="switch" data-checked={checked}>
         <input
           type="checkbox"
-          className="sr-only peer"
+          className="sr-only"
           checked={checked}
           disabled={disabled}
           onChange={(e) => onChange(e.target.checked)}
         />
-        <span className="w-9 h-5 rounded-full bg-white/10 peer-checked:bg-blue-500 transition-colors" />
-        <span className="absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
+        <span className="switch-track" />
+        <span className="switch-thumb" />
       </span>
     </label>
   );
