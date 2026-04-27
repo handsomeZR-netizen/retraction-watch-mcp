@@ -58,10 +58,12 @@ export async function extractPdf(
 
 function cleanPageText(text: string): string {
   return text
-    .replace(/ /g, "")
+    .replace(/[\u00A0\u202F\u2007\u2009\u200A]/g, " ")
     .replace(/\r/g, "")
+    .replace(/-\n([a-z\u4e00-\u9fff])/g, "$1")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
     .trim();
 }
 

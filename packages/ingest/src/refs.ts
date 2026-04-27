@@ -66,28 +66,55 @@ function trimToReferences(tail: string): string {
 function splitEntries(block: string): string[] {
   const cleaned = block.replace(/\r/g, "").trim();
   const lines = cleaned.split(/\n+/);
-  const numberedRe = /^\s*(?:\[(\d{1,3})\]|(\d{1,3})\.)\s+/;
-  const isNumbered = lines.slice(0, 30).filter((l) => numberedRe.test(l)).length >= 5;
+  const lineHeadRe = /^\s*(?:\[(\d{1,3})\]|(\d{1,3})\.)\s+/;
+  const isNumberedByLine =
+    lines.slice(0, 40).filter((l) => lineHeadRe.test(l)).length >= 4;
 
-  if (isNumbered) {
+  if (isNumberedByLine) {
     const out: string[] = [];
     let current = "";
     for (const line of lines) {
-      if (numberedRe.test(line)) {
+      if (lineHeadRe.test(line)) {
         if (current.trim()) out.push(current);
-        current = line.replace(numberedRe, "");
+        current = line.replace(lineHeadRe, "");
       } else {
         current += " " + line.trim();
       }
     }
     if (current.trim()) out.push(current);
     return out
-      .map((s) => s.replace(/\s+/g, " ").trim())
+      .map((s) => fixSplitDoi(s.replace(/\s+/g, " ").trim()))
       .filter((s) => s.length > 25);
   }
 
-  const blocks = cleaned.split(/\n{2,}/).map((b) => b.replace(/\n/g, " ").replace(/\s+/g, " ").trim());
+  const flat = cleaned.replace(/\n+/g, " ").replace(/\s+/g, " ").trim();
+  const inlineNumberedRe = /(?:^|[\.\)\s])(?:\[(\d{1,3})\]|(\d{1,3})\.)(?=\s+[A-Z\u4e00-\u9fff])/g;
+  const matches = [...flat.matchAll(inlineNumberedRe)];
+  if (matches.length >= 4) {
+    const out: string[] = [];
+    for (let i = 0; i < matches.length; i += 1) {
+      const start = matches[i].index ?? 0;
+      const end = i + 1 < matches.length ? matches[i + 1].index ?? flat.length : flat.length;
+      out.push(flat.slice(start, end).replace(/^[\.\)\s]*/, "").replace(lineHeadRe, "").trim());
+    }
+    return out.filter((s) => s.length > 25);
+  }
+
+  const blocks = cleaned
+    .split(/\n{2,}/)
+    .map((b) => fixSplitDoi(b.replace(/\n/g, " ").replace(/\s+/g, " ").trim()));
   return blocks.filter((b) => b.length > 25 && /\d{4}/.test(b));
+}
+
+function fixSplitDoi(text: string): string {
+  return text.replace(
+    /(10\.\d{4,9}\/[\w./-]*?)\s+([a-z0-9][\w./-]*)/gi,
+    (full, head: string, tail: string) => {
+      if (/\s/.test(tail)) return full;
+      if (head.length + tail.length > 120) return full;
+      return head + tail;
+    },
+  );
 }
 
 export function regexStructure(refs: RawReference[]): {
