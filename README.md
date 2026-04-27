@@ -165,9 +165,19 @@ npm run doctor -- --json  # 机器可读
 ### 启动开发服务器
 
 ```bash
+# 1. 写一个 .env.local（仅本机，已经 .gitignored）
+node -e "console.log('RW_SESSION_SECRET=' + require('crypto').randomBytes(32).toString('hex'))" > apps/web/.env.local
+echo "RW_MCP_DB_PATH=$(pwd)/data/retraction-watch.sqlite" >> apps/web/.env.local
+
+# 2. 创建第一个 admin 账户（密码不会进 git）
+ADMIN_USERNAME=alice ADMIN_PASSWORD='your-strong-pw' npm run seed-admin -w @rw/web
+
+# 3. 启动
 npm run dev:web
-# 浏览器打开 http://localhost:3210
+# 浏览器打开 http://localhost:3210，登录即可
 ```
+
+未登录会被中间件拦截重定向到 `/login`。注册页 `/register` 公开开放（生产环境若不想让任意人注册，下个 P1 可以加白名单或邀请码）。第一个注册的人自动获得 admin 角色。
 
 ### 使用流程
 
@@ -585,6 +595,27 @@ npm run mcpb:pack
 打包出的 `.mcpb` 不内置 SQLite 数据库，安装后需要把 `db_path` 指向本机 `rw-import` 生成的数据库。
 
 ---
+
+## 🔐 用户认证 + 历史记录
+
+Web 站点带一个轻量认证层：
+
+| 能力 | 实现 |
+| --- | --- |
+| 注册 / 登录 / 登出 | `iron-session`（加密 cookie，HTTP-only，SameSite=Lax）+ `bcryptjs` 12 rounds |
+| 用户数据库 | `~/.config/rw-screen/app.sqlite`（独立于撤稿库，便于备份/迁移） |
+| 路由保护 | `middleware.ts` —— 除 `/login` `/register` `/api/auth/*` `/api/health` 全部需登录 |
+| 历史记录 | 每个用户独立的 manuscript 列表，`/history` 页面查看 / 删除 |
+| 越权防护 | 所有 `/api/result/*` `/api/report/*` `/api/parse` `/api/manuscripts/*` 校验 `manuscripts.user_id == current.user.id` |
+| 限流 | 内存 LRU（登录 IP 10/分钟、用户 5/分钟、注册 IP 5/分钟） |
+| Audit log | `audit_log` 表记录 register/login/logout/upload/delete_manuscript |
+| Admin | seed-admin CLI 设置；或第一个注册者自动 admin |
+| Session 撤销 | users 表 `session_version`，登出/改密 +1，旧 cookie 自动失效 |
+
+**部署须知（VPS / Docker）**：
+- 必须设置 `RW_SESSION_SECRET`（≥ 32 字符随机），否则 iron-session 会用 dev fallback 提示 |
+- `RW_APP_DB_DIR` 可指向 volume 挂载点 `/data` 让 app.sqlite 持久化 |
+- 容器启动后用 `docker exec ... npm run seed-admin -w @rw/web` 一次性灌 admin |
 
 ## 🔒 隐私与安全
 

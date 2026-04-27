@@ -6,6 +6,7 @@ import {
   screenPerson,
   toPublicScreenResult,
 } from "@rw/core";
+import { requireUser } from "@/lib/auth/guard";
 import { getRepository } from "@/lib/repository";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +24,8 @@ const Schema = z.object({
 });
 
 export async function POST(req: Request) {
+  const auth = await requireUser();
+  if ("response" in auth) return auth.response;
   let payload: unknown;
   try {
     payload = await req.json();

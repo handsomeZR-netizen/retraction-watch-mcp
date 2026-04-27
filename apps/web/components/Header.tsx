@@ -6,10 +6,12 @@ import { GithubLogo } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { HealthIndicator } from "@/components/HealthIndicator";
+import { UserMenu } from "@/components/UserMenu";
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/", label: "首页" },
+  { href: "/history", label: "历史" },
   { href: "/settings", label: "设置" },
 ];
 
@@ -60,6 +62,7 @@ export function Header() {
             </a>
           </Button>
           <ThemeToggle />
+          <UserMenu />
         </div>
       </div>
     </header>
