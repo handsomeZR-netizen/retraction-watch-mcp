@@ -1,13 +1,14 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { SignIn } from "@phosphor-icons/react";
+import { GithubLogo, GoogleLogo, SignIn } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 
 function LoginForm() {
   const router = useRouter();
@@ -17,6 +18,15 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [providers, setProviders] = useState<string[]>([]);
+
+  useEffect(() => {
+    void fetch("/api/auth/oauth/providers")
+      .then((r) => r.json())
+      .then((j: { providers: string[] }) => setProviders(j.providers ?? []));
+    const e = params.get("error");
+    if (e) setError(`OAuth 失败：${e}`);
+  }, [params]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -90,7 +100,43 @@ function LoginForm() {
               </>
             )}
           </Button>
+          <div className="text-center text-xs">
+            <Link href="/forgot" className="text-muted-foreground hover:text-foreground underline">
+              忘记密码？
+            </Link>
+          </div>
         </form>
+
+        {providers.length > 0 && (
+          <>
+            <div className="relative my-6">
+              <Separator />
+              <span className="absolute inset-0 flex items-center justify-center">
+                <span className="bg-card px-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  或使用第三方
+                </span>
+              </span>
+            </div>
+            <div className="space-y-2">
+              {providers.includes("github") && (
+                <Button asChild variant="outline" className="w-full">
+                  <a href={`/api/auth/oauth/github?redirect=${encodeURIComponent(redirect)}`}>
+                    <GithubLogo className="h-4 w-4" weight="duotone" />
+                    GitHub 登录
+                  </a>
+                </Button>
+              )}
+              {providers.includes("google") && (
+                <Button asChild variant="outline" className="w-full">
+                  <a href={`/api/auth/oauth/google?redirect=${encodeURIComponent(redirect)}`}>
+                    <GoogleLogo className="h-4 w-4" weight="duotone" />
+                    Google 登录
+                  </a>
+                </Button>
+              )}
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );

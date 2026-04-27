@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
+import { canDeleteManuscript } from "@/lib/auth/scope";
 import { writeAudit } from "@/lib/db/audit";
 import { deleteManuscript, getManuscript } from "@/lib/db/manuscripts";
 import { getRequestIp } from "@/lib/auth/validate";
@@ -18,10 +19,10 @@ export async function DELETE(
   if ("response" in auth) return auth.response;
   const { id } = await params;
   const row = getManuscript(id);
-  if (!row || row.user_id !== auth.user.id) {
+  if (!row || !canDeleteManuscript(auth.user, row)) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  deleteManuscript(id, auth.user.id);
+  deleteManuscript(id);
   await fs.rm(path.join(getDataDir(), id), { recursive: true, force: true });
   writeAudit({
     userId: auth.user.id,

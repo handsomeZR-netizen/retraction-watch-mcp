@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import { countManuscriptsByUser, listManuscriptsByUser } from "@/lib/db/manuscripts";
+import { activeScope } from "@/lib/auth/scope";
+import {
+  countManuscriptsForScope,
+  listManuscriptsForScope,
+} from "@/lib/db/manuscripts";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,7 +16,8 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const limit = Math.max(1, Math.min(100, Number(url.searchParams.get("limit") ?? 50)));
   const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0));
-  const items = listManuscriptsByUser(user.id, { limit, offset }).map((row) => ({
+  const scope = activeScope(user);
+  const items = listManuscriptsForScope(scope, { limit, offset }).map((row) => ({
     id: row.id,
     fileName: row.file_name,
     fileType: row.file_type,
@@ -26,8 +31,9 @@ export async function GET(req: Request) {
   }));
   return NextResponse.json({
     items,
-    total: countManuscriptsByUser(user.id),
+    total: countManuscriptsForScope(scope),
     limit,
     offset,
+    scope,
   });
 }

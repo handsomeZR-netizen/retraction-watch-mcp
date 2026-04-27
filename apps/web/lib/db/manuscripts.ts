@@ -3,6 +3,7 @@ import { getAppDb } from "./app-db";
 export interface ManuscriptRow {
   id: string;
   user_id: string;
+  workspace_id: string | null;
   file_name: string;
   file_type: string;
   bytes: number;
@@ -20,16 +21,25 @@ export interface ManuscriptRow {
 export function insertManuscript(row: {
   id: string;
   userId: string;
+  workspaceId: string | null;
   fileName: string;
   fileType: string;
   bytes: number;
 }): void {
   getAppDb()
     .prepare(
-      `INSERT INTO manuscripts (id, user_id, file_name, file_type, bytes, uploaded_at, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'parsing')`,
+      `INSERT INTO manuscripts (id, user_id, workspace_id, file_name, file_type, bytes, uploaded_at, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'parsing')`,
     )
-    .run(row.id, row.userId, row.fileName, row.fileType, row.bytes, new Date().toISOString());
+    .run(
+      row.id,
+      row.userId,
+      row.workspaceId,
+      row.fileName,
+      row.fileType,
+      row.bytes,
+      new Date().toISOString(),
+    );
 }
 
 export function markManuscriptDone(input: {
@@ -71,30 +81,62 @@ export function getManuscript(id: string): ManuscriptRow | null {
   return row ?? null;
 }
 
+export function listManuscriptsForScope(
+  scope: { userId: string; workspaceId: string | null },
+  options: { limit?: number; offset?: number } = {},
+): ManuscriptRow[] {
+  const limit = options.limit ?? 50;
+  const offset = options.offset ?? 0;
+  if (scope.workspaceId) {
+    return getAppDb()
+      .prepare(
+        `SELECT * FROM manuscripts
+         WHERE workspace_id = ?
+         ORDER BY uploaded_at DESC
+         LIMIT ? OFFSET ?`,
+      )
+      .all(scope.workspaceId, limit, offset) as ManuscriptRow[];
+  }
+  return getAppDb()
+    .prepare(
+      `SELECT * FROM manuscripts
+       WHERE user_id = ? AND workspace_id IS NULL
+       ORDER BY uploaded_at DESC
+       LIMIT ? OFFSET ?`,
+    )
+    .all(scope.userId, limit, offset) as ManuscriptRow[];
+}
+
+export function countManuscriptsForScope(scope: {
+  userId: string;
+  workspaceId: string | null;
+}): number {
+  if (scope.workspaceId) {
+    const r = getAppDb()
+      .prepare("SELECT COUNT(*) AS n FROM manuscripts WHERE workspace_id = ?")
+      .get(scope.workspaceId) as { n: number };
+    return r.n;
+  }
+  const r = getAppDb()
+    .prepare(
+      "SELECT COUNT(*) AS n FROM manuscripts WHERE user_id = ? AND workspace_id IS NULL",
+    )
+    .get(scope.userId) as { n: number };
+  return r.n;
+}
+
 export function listManuscriptsByUser(
   userId: string,
   options: { limit?: number; offset?: number } = {},
 ): ManuscriptRow[] {
-  return getAppDb()
-    .prepare(
-      `SELECT * FROM manuscripts
-       WHERE user_id = ?
-       ORDER BY uploaded_at DESC
-       LIMIT ? OFFSET ?`,
-    )
-    .all(userId, options.limit ?? 50, options.offset ?? 0) as ManuscriptRow[];
+  return listManuscriptsForScope({ userId, workspaceId: null }, options);
 }
 
 export function countManuscriptsByUser(userId: string): number {
-  const r = getAppDb()
-    .prepare("SELECT COUNT(*) AS n FROM manuscripts WHERE user_id = ?")
-    .get(userId) as { n: number };
-  return r.n;
+  return countManuscriptsForScope({ userId, workspaceId: null });
 }
 
-export function deleteManuscript(id: string, userId: string): boolean {
-  const info = getAppDb()
-    .prepare("DELETE FROM manuscripts WHERE id = ? AND user_id = ?")
-    .run(id, userId);
+export function deleteManuscript(id: string): boolean {
+  const info = getAppDb().prepare("DELETE FROM manuscripts WHERE id = ?").run(id);
   return info.changes > 0;
 }

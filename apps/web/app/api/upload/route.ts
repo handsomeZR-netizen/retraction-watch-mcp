@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { inferFileType } from "@rw/core";
 import { requireUser } from "@/lib/auth/guard";
+import { activeScope } from "@/lib/auth/scope";
 import { writeAudit } from "@/lib/db/audit";
 import { insertManuscript } from "@/lib/db/manuscripts";
 import { getRequestIp } from "@/lib/auth/validate";
@@ -38,9 +39,11 @@ export async function POST(req: Request) {
     fileType,
     body: file.stream(),
   });
+  const scope = activeScope(user);
   insertManuscript({
     id: manuscriptId,
     userId: user.id,
+    workspaceId: scope.workspaceId,
     fileName: safeName,
     fileType,
     bytes: record.bytes,
@@ -48,7 +51,13 @@ export async function POST(req: Request) {
   writeAudit({
     userId: user.id,
     action: "upload",
-    detail: { manuscriptId, fileName: safeName, fileType, bytes: record.bytes },
+    detail: {
+      manuscriptId,
+      fileName: safeName,
+      fileType,
+      bytes: record.bytes,
+      workspaceId: scope.workspaceId,
+    },
     ip: getRequestIp(req.headers),
     userAgent: req.headers.get("user-agent"),
   });

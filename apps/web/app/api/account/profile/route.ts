@@ -24,6 +24,9 @@ export async function GET() {
     avatarSeed: user.avatar_seed ?? user.username,
     createdAt: user.created_at,
     lastLoginAt: user.last_login_at,
+    email: user.email,
+    emailVerified: user.email_verified === 1,
+    activeWorkspaceId: user.active_workspace_id,
   });
 }
 

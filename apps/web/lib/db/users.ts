@@ -13,6 +13,27 @@ export interface UserRow {
   session_version: number;
   avatar_seed: string | null;
   llm_settings_json: string | null;
+  email: string | null;
+  email_verified: 0 | 1;
+  active_workspace_id: string | null;
+}
+
+export function findUserByEmail(email: string): UserRow | null {
+  return (
+    (getAppDb()
+      .prepare("SELECT * FROM users WHERE LOWER(email) = LOWER(?)")
+      .get(email) as UserRow | undefined) ?? null
+  );
+}
+
+export function setUserEmail(userId: string, email: string | null, verified: boolean): void {
+  getAppDb()
+    .prepare("UPDATE users SET email = ?, email_verified = ? WHERE id = ?")
+    .run(email, verified ? 1 : 0, userId);
+}
+
+export function markEmailVerified(userId: string): void {
+  getAppDb().prepare("UPDATE users SET email_verified = 1 WHERE id = ?").run(userId);
 }
 
 export interface UserLlmSettings {

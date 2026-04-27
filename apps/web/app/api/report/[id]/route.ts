@@ -1,6 +1,7 @@
 import Papa from "papaparse";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
+import { canAccessManuscript } from "@/lib/auth/scope";
 import { getManuscript } from "@/lib/db/manuscripts";
 import { getResult } from "@/lib/store";
 
@@ -15,7 +16,7 @@ export async function GET(
   if ("response" in auth) return auth.response;
   const { id } = await params;
   const row = getManuscript(id);
-  if (!row || row.user_id !== auth.user.id) {
+  if (!row || !canAccessManuscript(auth.user, row)) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
   const url = new URL(req.url);

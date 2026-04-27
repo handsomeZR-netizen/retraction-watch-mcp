@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import { listManuscriptsByUser } from "@/lib/db/manuscripts";
+import { activeScope } from "@/lib/auth/scope";
+import { listManuscriptsForScope } from "@/lib/db/manuscripts";
 import { getResult } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,8 @@ export async function GET() {
   const auth = await requireUser();
   if ("response" in auth) return auth.response;
 
-  const rows = listManuscriptsByUser(auth.user.id, { limit: 10_000 });
+  const scope = activeScope(auth.user);
+  const rows = listManuscriptsForScope(scope, { limit: 10_000 });
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {

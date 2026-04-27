@@ -14,6 +14,7 @@ import {
   markManuscriptError,
 } from "@/lib/db/manuscripts";
 import { findUserById, getUserLlmSettings } from "@/lib/db/users";
+import { canAccessManuscript } from "@/lib/auth/scope";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -30,7 +31,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "manuscriptId required" }, { status: 400 });
   }
   const row = getManuscript(manuscriptId);
-  if (!row || row.user_id !== user.id) {
+  if (!row || !canAccessManuscript(user, row)) {
     return NextResponse.json({ error: "manuscript not found" }, { status: 404 });
   }
   const upload = await getUpload(manuscriptId);
