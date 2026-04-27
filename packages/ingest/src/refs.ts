@@ -69,7 +69,8 @@ function trimToReferences(tail: string): string {
 function splitEntries(block: string): string[] {
   const cleaned = block.replace(/\r/g, "").trim();
   const lines = cleaned.split(/\n+/);
-  const lineHeadRe = /^\s*(?:\[(\d{1,3})\]|(\d{1,3})\.)\s+/;
+  const lineHeadRe =
+    /^\s*(?:\[(?:\d{1,3}|[A-Za-z][A-Za-z+\-]{0,12}\d{2,4}[a-z]?)\]|\(\d{1,3}\)|\d{1,3}\.)\s+/;
   const isNumberedByLine =
     lines.slice(0, 40).filter((l) => lineHeadRe.test(l)).length >= 4;
 
@@ -90,8 +91,12 @@ function splitEntries(block: string): string[] {
       .filter((s) => s.length > 25);
   }
 
+  const authorYearOut = splitAuthorYear(lines);
+  if (authorYearOut.length >= 4) return authorYearOut;
+
   const flat = cleaned.replace(/\n+/g, " ").replace(/\s+/g, " ").trim();
-  const inlineNumberedRe = /(?:^|[\.\)\s])(?:\[(\d{1,3})\]|(\d{1,3})\.)(?=\s+[A-Z\u4e00-\u9fff])/g;
+  const inlineNumberedRe =
+    /(?:^|[\.\)\s])(?:\[(\d{1,3})\]|(\d{1,3})\.)(?=\s+[A-Z][a-zA-Z'\-]+(?:,|\s+[A-Z]))/g;
   const matches = [...flat.matchAll(inlineNumberedRe)];
   if (matches.length >= 4) {
     const out: string[] = [];
@@ -106,9 +111,6 @@ function splitEntries(block: string): string[] {
     }
     return out.filter((s) => s.length > 25);
   }
-
-  const authorYearOut = splitAuthorYear(lines);
-  if (authorYearOut.length >= 4) return authorYearOut;
 
   const blocks = cleaned
     .split(/\n{2,}/)
@@ -128,9 +130,11 @@ function splitAuthorYear(rawLines: string[]): string[] {
 
   const isAuthorStart = (l: string): boolean => {
     if (l.length < 8) return false;
-    if (/^\[(\d{1,3})\]\s+/.test(l)) return true;
+    if (/^\[(?:\d{1,3}|[A-Za-z][A-Za-z+\-]{0,12}\d{2,4}[a-z]?)\]\s+/.test(l)) return true;
     if (/^[A-Z][a-zA-Z'\-]+,\s+[A-Z]\.?/.test(l)) return true;
     if (/^[A-Z][a-zA-Z'\-]+,\s*[A-Z][a-z]?\.\s*[A-Z]?\.?,/.test(l)) return true;
+    if (/^[A-Z][a-z]+\s+[A-Z][a-zA-Z'\-]+(?:,|\s+and\s+|\s+et\s+al)/.test(l)) return true;
+    if (/^[A-Z][a-z]+\s+[A-Z][a-zA-Z'\-]+\.\s/.test(l)) return true;
     if (/^[\u4e00-\u9fff]{2,4}[,，\s]/.test(l)) return true;
     return false;
   };
