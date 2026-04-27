@@ -2,9 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Database, FileSearch, Lock, ShieldCheck, Sparkles } from "lucide-react";
+import {
+  Database,
+  MagnifyingGlass,
+  ShieldCheck,
+  Sparkle,
+} from "@phosphor-icons/react";
+import { Card } from "@/components/ui/card";
 import { Dropzone } from "@/components/Dropzone";
-import { ProgressTimeline, type TimelineEvent } from "@/components/ProgressTimeline";
+import {
+  ProgressTimeline,
+  type TimelineEvent,
+} from "@/components/ProgressTimeline";
+import { Badge } from "@/components/ui/badge";
 
 export default function HomePage() {
   const router = useRouter();
@@ -33,20 +43,25 @@ export default function HomePage() {
           body: formData,
         });
         if (!uploadRes.ok) throw new Error(await uploadRes.text());
-        const { manuscriptId } = (await uploadRes.json()) as { manuscriptId: string };
+        const { manuscriptId } = (await uploadRes.json()) as {
+          manuscriptId: string;
+        };
 
-        const sse = new EventSource(`/api/parse?manuscriptId=${encodeURIComponent(manuscriptId)}`);
+        const sse = new EventSource(
+          `/api/parse?manuscriptId=${encodeURIComponent(manuscriptId)}`,
+        );
         sseRef.current = sse;
         sse.onmessage = (ev) => {
           if (!ev.data) return;
           try {
-            const payload = JSON.parse(ev.data) as TimelineEvent & { manuscriptId?: string };
+            const payload = JSON.parse(ev.data) as TimelineEvent;
             setEvents((prev) => [...prev, payload]);
             if (payload.stage === "done") {
               sse.close();
               sseRef.current = null;
               setTimeout(
-                () => router.push(`/result/${encodeURIComponent(manuscriptId)}`),
+                () =>
+                  router.push(`/result/${encodeURIComponent(manuscriptId)}`),
                 500,
               );
             }
@@ -57,7 +72,7 @@ export default function HomePage() {
               setError(payload.message ?? "解析失败");
             }
           } catch {
-            // ignore non-JSON
+            // ignore
           }
         };
         sse.onerror = () => {
@@ -75,94 +90,119 @@ export default function HomePage() {
   );
 
   return (
-    <div className="space-y-10">
-      <section className="grid lg:grid-cols-[1.4fr_1fr] gap-8 items-start">
+    <div className="space-y-12">
+      <section className="grid lg:grid-cols-[1.4fr_1fr] gap-10 items-start">
         <div className="space-y-5">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs bg-primary/10 border border-primary/20 text-primary">
-            <Sparkles className="w-3 h-3" />
+          <Badge variant="muted" className="text-[10px] uppercase tracking-wider">
+            <Sparkle className="h-3 w-3" weight="fill" />
             学术诚信筛查 · 本地优先
-          </div>
-          <h1 className="text-4xl md:text-5xl font-semibold tracking-tight leading-[1.1] text-foreground">
+          </Badge>
+          <h1 className="text-4xl md:text-5xl font-semibold tracking-tight leading-[1.05]">
             一键检测稿件是否
             <br />
-            <span className="text-primary">引用了撤稿文献</span>
+            引用了
+            <span className="relative">
+              <span className="relative z-10">撤稿文献</span>
+              <span
+                aria-hidden
+                className="absolute inset-x-0 bottom-1 h-2 bg-warning/30 -z-0"
+              />
+            </span>
           </h1>
           <p className="text-muted-foreground text-base leading-relaxed max-w-xl">
-            拖拽 PDF / Word / LaTeX 文件到下方，自动抽取作者信息和参考文献，并比对本地
-            Retraction Watch 数据库。引用了已撤稿文献的稿件会标记为不通过。
-            所有解析默认在本地完成；启用 LLM 增强或云 OCR 才会发起出网请求。
+            拖拽 PDF / Word / LaTeX 文件到下方，自动抽取作者信息和参考文献，比对本地
+            Retraction Watch 数据库。所有解析默认在本地完成，启用 LLM
+            增强或云 OCR 才会发起出网请求。
           </p>
-          <div className="flex items-center gap-5 text-xs text-muted-foreground pt-2">
-            <span className="inline-flex items-center gap-1.5">
-              <Database className="w-3.5 h-3.5" /> Retraction Watch 全量
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5" /> 三档裁决
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Lock className="w-3.5 h-3.5" /> 隐私优先
-            </span>
+          <div className="flex items-center gap-5 text-xs text-muted-foreground pt-1">
+            <Tag icon={Database}>RW 全量</Tag>
+            <Tag icon={ShieldCheck}>三档裁决</Tag>
+            <Tag icon={MagnifyingGlass}>可解释证据</Tag>
           </div>
         </div>
 
         <div className="lg:sticky lg:top-24">
-          <Dropzone onDrop={onDrop} busy={busy} hint={fileLabel ?? undefined} />
+          <Dropzone
+            onDrop={onDrop}
+            busy={busy}
+            hint={fileLabel ?? undefined}
+          />
         </div>
       </section>
 
       {error && (
-        <div className="surface px-4 py-3 border-destructive/40 bg-destructive/5 text-destructive text-sm fade-in-up">
-          ✗ {error}
-        </div>
+        <Card className="border-destructive/50 bg-destructive/5 p-4 text-sm text-destructive animate-fade-in-up">
+          {error}
+        </Card>
       )}
 
       {events.length > 0 && (
-        <section className="surface p-6 fade-in-up">
+        <Card className="p-6 animate-fade-in-up">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-foreground">解析进度</h2>
+            <h2 className="text-base font-semibold">解析进度</h2>
             {fileLabel && (
-              <span className="badge badge-muted code">{fileLabel}</span>
+              <Badge variant="muted" className="font-mono text-[11px]">
+                {fileLabel}
+              </Badge>
             )}
           </div>
           <ProgressTimeline events={events} />
-        </section>
+        </Card>
       )}
 
       <section className="grid md:grid-cols-3 gap-4">
-        <FeatureCard
-          icon={FileSearch}
+        <Feature
+          icon={MagnifyingGlass}
           title="参考文献抽取"
-          desc="正则抽 DOI/PMID 覆盖现代论文 ~90%，无 DOI 的可选 LLM 结构化兜底"
+          desc="正则抽 DOI/PMID 覆盖现代论文 90%，无 DOI 的可选 LLM 结构化兜底。"
         />
-        <FeatureCard
+        <Feature
           icon={Database}
           title="多路匹配"
-          desc="DOI/PMID 精确命中、标题 Jaccard、作者重叠、年份 ±1，支持中文拼音回退"
+          desc="DOI/PMID 精确命中、标题 Jaccard、作者重叠、年份 ±1，支持中文拼音回退。"
         />
-        <FeatureCard
+        <Feature
           icon={ShieldCheck}
           title="可解释证据"
-          desc="每条命中附 evidence[] 强弱明细；导出 JSON / CSV 报告供编辑复核"
+          desc="每条命中附 evidence 强弱明细；导出 JSON / CSV 报告供编辑复核。"
         />
       </section>
     </div>
   );
 }
 
-function FeatureCard({
+function Tag({
+  icon: Icon,
+  children,
+}: {
+  icon: typeof Database;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Icon className="h-3.5 w-3.5" weight="duotone" />
+      {children}
+    </span>
+  );
+}
+
+function Feature({
   icon: Icon,
   title,
   desc,
 }: {
-  icon: typeof FileSearch;
+  icon: typeof Database;
   title: string;
   desc: string;
 }) {
   return (
-    <div className="surface px-5 py-5 surface-hover">
-      <Icon className="w-5 h-5 text-primary mb-3" strokeWidth={1.8} />
-      <h3 className="text-sm font-semibold mb-1.5 text-foreground">{title}</h3>
+    <Card className="p-5 transition-colors hover:bg-accent/30">
+      <Icon
+        className="h-5 w-5 text-foreground mb-3"
+        weight="duotone"
+      />
+      <h3 className="text-sm font-semibold mb-1.5">{title}</h3>
       <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
-    </div>
+    </Card>
   );
 }

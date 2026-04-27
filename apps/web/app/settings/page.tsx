@@ -3,15 +3,22 @@
 import { useEffect, useReducer, useState } from "react";
 import {
   Brain,
-  Check,
-  Clock,
   Eye,
-  EyeOff,
+  EyeSlash,
   Image as ImageIcon,
-  Save,
+  FloppyDisk,
   ShieldCheck,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+  Clock,
+  type Icon,
+} from "@phosphor-icons/react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 
 interface PublicConfig {
   llm: {
@@ -47,7 +54,6 @@ export default function SettingsPage() {
   const [config, dispatch] = useReducer(reducer, null);
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
-  const [status, setStatus] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
 
   useEffect(() => {
     void fetch("/api/settings").then(async (res) => {
@@ -58,46 +64,41 @@ export default function SettingsPage() {
 
   if (!config) {
     return (
-      <div className="space-y-3">
-        <div className="skeleton h-8 w-40" />
-        <div className="skeleton h-32 w-full" />
-        <div className="skeleton h-32 w-full" />
+      <div className="space-y-6">
+        <Skeleton className="h-9 w-32" />
+        <Skeleton className="h-44 w-full" />
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-32 w-full" />
       </div>
     );
   }
 
   async function save(partial: Partial<PublicConfig>) {
-    setStatus(null);
     const res = await fetch("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(partial),
     });
     if (!res.ok) {
-      setStatus({ kind: "err", msg: "保存失败：" + (await res.text()) });
+      toast.error("保存失败：" + (await res.text()));
       return;
     }
     const next = (await res.json()) as PublicConfig;
     dispatch({ type: "set", config: next });
-    setStatus({ kind: "ok", msg: "已保存" });
-    setTimeout(() => setStatus(null), 1800);
+    toast.success("已保存");
   }
 
   return (
     <div className="max-w-3xl space-y-8">
-      <header>
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground">设置</h1>
-        <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-          所有解析默认在本地完成；只有打开下面的开关才会发起出网请求。API Key 仅保存在服务端配置文件，不会进入 git 也不会回包前端。
+      <header className="space-y-2">
+        <h1 className="text-3xl font-semibold tracking-tight">设置</h1>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          所有解析默认在本地完成。启用下方开关才会发起出网请求。API Key 仅保存在服务端配置文件，不会写入 git，也不会回到前端。
         </p>
       </header>
 
-      <SettingsCard
-        icon={Brain}
-        title="LLM 增强"
-        sub="DeepSeek / OpenAI 兼容服务，用于结构化抽取无 DOI 的参考文献"
-      >
-        <Toggle
+      <SettingsCard icon={Brain} title="LLM 增强" sub="DeepSeek / OpenAI 兼容服务，用于结构化抽取无 DOI 的参考文献">
+        <ToggleRow
           label="启用 LLM 参考文献增强解析"
           checked={config.llm.enabled}
           onChange={(v) => {
@@ -105,7 +106,7 @@ export default function SettingsPage() {
             void save({ llm: { ...config.llm, enabled: v } });
           }}
         />
-        <Toggle
+        <ToggleRow
           label="启用 LLM 首页元数据增强（更耗 token）"
           checked={config.llm.enableHeaderParse}
           disabled={!config.llm.enabled}
@@ -115,11 +116,13 @@ export default function SettingsPage() {
           }}
         />
 
-        <div className="grid sm:grid-cols-2 gap-3 mt-2">
-          <div>
-            <label className="label">Base URL</label>
-            <input
-              className="input"
+        <Separator />
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="baseUrl">Base URL</Label>
+            <Input
+              id="baseUrl"
               value={config.llm.baseUrl}
               onChange={(e) =>
                 dispatch({ type: "patchLlm", partial: { baseUrl: e.target.value } })
@@ -129,31 +132,35 @@ export default function SettingsPage() {
               }
             />
           </div>
-          <div>
-            <label className="label">Model</label>
-            <input
-              className="input code"
+          <div className="space-y-1.5">
+            <Label htmlFor="model">Model</Label>
+            <Input
+              id="model"
+              className="font-mono"
               value={config.llm.model}
               onChange={(e) =>
                 dispatch({ type: "patchLlm", partial: { model: e.target.value } })
               }
-              onBlur={(e) => void save({ llm: { ...config.llm, model: e.target.value } })}
+              onBlur={(e) =>
+                void save({ llm: { ...config.llm, model: e.target.value } })
+              }
             />
           </div>
         </div>
 
-        <div>
-          <label className="label">
-            API Key{" "}
+        <div className="space-y-1.5">
+          <Label htmlFor="apiKey" className="flex items-center gap-2">
+            API Key
             {config.llm.apiKey === "***" && (
-              <span className="text-success font-normal text-xs">· 已保存</span>
+              <span className="text-success text-xs font-normal">· 已保存</span>
             )}
-          </label>
+          </Label>
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
-              <input
+              <Input
+                id="apiKey"
                 type={showApiKey ? "text" : "password"}
-                className="input code !pr-10"
+                className="font-mono pr-10"
                 value={apiKeyDraft}
                 onChange={(e) => setApiKeyDraft(e.target.value)}
                 placeholder={
@@ -163,18 +170,17 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => setShowApiKey(!showApiKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-muted-foreground hover:text-foreground"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
                 aria-label="toggle visibility"
               >
                 {showApiKey ? (
-                  <EyeOff className="w-4 h-4" />
+                  <EyeSlash className="h-4 w-4" weight="duotone" />
                 ) : (
-                  <Eye className="w-4 h-4" />
+                  <Eye className="h-4 w-4" weight="duotone" />
                 )}
               </button>
             </div>
-            <button
-              className="btn btn-primary"
+            <Button
               disabled={!apiKeyDraft}
               onClick={async () => {
                 if (!apiKeyDraft) return;
@@ -182,22 +188,21 @@ export default function SettingsPage() {
                 setApiKeyDraft("");
               }}
             >
-              <Save className="w-4 h-4" />
+              <FloppyDisk className="h-4 w-4" weight="bold" />
               保存 Key
-            </button>
+            </Button>
           </div>
-          <div className="text-[11px] text-muted-foreground mt-1.5">
-            服务端持久化路径：<code className="code">~/.config/rw-screen/config.json</code>
-          </div>
+          <p className="text-[11px] text-muted-foreground">
+            服务端持久化路径：
+            <code className="ml-1 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]">
+              ~/.config/rw-screen/config.json
+            </code>
+          </p>
         </div>
       </SettingsCard>
 
-      <SettingsCard
-        icon={ImageIcon}
-        title="云端 OCR"
-        sub="仅扫描版 PDF 才会触发；本地默认走 tesseract.js"
-      >
-        <Toggle
+      <SettingsCard icon={ImageIcon} title="云端 OCR" sub="仅扫描版 PDF 才会触发；本地默认走 tesseract.js">
+        <ToggleRow
           label="启用云端 OCR（整页图像会上传至所配置的服务）"
           checked={config.ocr.cloudEnabled}
           onChange={(v) => {
@@ -207,12 +212,8 @@ export default function SettingsPage() {
         />
       </SettingsCard>
 
-      <SettingsCard
-        icon={Clock}
-        title="保留策略"
-        sub="上传的稿件副本与解析结果如何保留"
-      >
-        <Toggle
+      <SettingsCard icon={Clock} title="保留策略" sub="上传的稿件副本与解析结果如何保留">
+        <ToggleRow
           label="保留稿件副本以便复核"
           checked={config.retention.keepUploads}
           onChange={(v) => {
@@ -220,13 +221,13 @@ export default function SettingsPage() {
             void save({ retention: { ...config.retention, keepUploads: v } });
           }}
         />
-        <div>
-          <label className="label">自动清理超过多少小时的上传</label>
-          <input
+        <div className="space-y-1.5">
+          <Label htmlFor="keepHours">自动清理超过多少小时的上传</Label>
+          <Input
+            id="keepHours"
             type="number"
             min={1}
             max={720}
-            className="input"
             value={config.retention.keepHours}
             onChange={(e) =>
               dispatch({
@@ -236,36 +237,29 @@ export default function SettingsPage() {
             }
             onBlur={(e) =>
               void save({
-                retention: { ...config.retention, keepHours: Number(e.target.value) },
+                retention: {
+                  ...config.retention,
+                  keepHours: Number(e.target.value),
+                },
               })
             }
           />
         </div>
       </SettingsCard>
 
-      <div className="surface px-4 py-3 text-xs text-muted-foreground flex items-start gap-2">
-        <ShieldCheck className="w-4 h-4 text-success mt-0.5 shrink-0" />
-        <div>
-          <span className="text-foreground font-medium">隐私小贴士</span>
-          ：API Key 永远只在服务端持久化，不会回包到前端、不会写入 git。可以通过环境变量
-          <code className="code mx-1">DEEPSAPI_API_KEY</code>
-          注入而不依赖 UI 配置。
-        </div>
-      </div>
-
-      {status && (
-        <div
-          className={cn(
-            "fixed bottom-6 right-6 surface px-4 py-2.5 text-sm flex items-center gap-2 fade-in-up",
-            status.kind === "ok"
-              ? "border-success/30 bg-success/10 text-success"
-              : "border-destructive/30 bg-destructive/10 text-destructive",
-          )}
-        >
-          {status.kind === "ok" && <Check className="w-4 h-4" />}
-          {status.msg}
-        </div>
-      )}
+      <Card className="bg-muted/30">
+        <CardContent className="p-4 flex items-start gap-3 text-xs text-muted-foreground">
+          <ShieldCheck className="h-4 w-4 text-success mt-0.5 shrink-0" weight="duotone" />
+          <p>
+            <span className="text-foreground font-medium">隐私小贴士：</span>
+            API Key 永远只在服务端持久化，不会回到前端、不会写入 git。可以通过环境变量
+            <code className="mx-1 rounded bg-background px-1.5 py-0.5 font-mono">
+              DEEPSAPI_API_KEY
+            </code>
+            注入而不依赖 UI 配置。
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -276,29 +270,30 @@ function SettingsCard({
   sub,
   children,
 }: {
-  icon: typeof Brain;
+  icon: Icon;
   title: string;
   sub: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="surface p-6 space-y-4">
-      <header className="flex items-center gap-3">
-        <span className="w-9 h-9 rounded-md bg-primary/10 text-primary flex items-center justify-center">
-          <Icon className="w-4 h-4" strokeWidth={2} />
-        </span>
-        <div>
-          <h2 className="text-base font-semibold text-foreground">{title}</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-3">
+          <span className="grid h-9 w-9 place-items-center rounded-md bg-muted text-foreground">
+            <Icon className="h-4 w-4" weight="duotone" />
+          </span>
+          <div>
+            <CardTitle className="text-base">{title}</CardTitle>
+            <CardDescription className="text-xs mt-0.5">{sub}</CardDescription>
+          </div>
         </div>
-      </header>
-      <div className="divider" />
-      <div className="space-y-3">{children}</div>
-    </section>
+      </CardHeader>
+      <CardContent className="space-y-4">{children}</CardContent>
+    </Card>
   );
 }
 
-function Toggle({
+function ToggleRow({
   label,
   checked,
   onChange,
@@ -310,24 +305,9 @@ function Toggle({
   disabled?: boolean;
 }) {
   return (
-    <label
-      className={cn(
-        "flex items-center justify-between gap-3 px-3 py-2.5 rounded-md surface-2 cursor-pointer hover:border-ring/40 transition-colors",
-        disabled && "opacity-50 cursor-not-allowed",
-      )}
-    >
-      <span className="text-sm text-foreground">{label}</span>
-      <span className="switch" data-checked={checked}>
-        <input
-          type="checkbox"
-          className="sr-only"
-          checked={checked}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.checked)}
-        />
-        <span className="switch-track" />
-        <span className="switch-thumb" />
-      </span>
-    </label>
+    <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3">
+      <Label className="text-sm flex-1">{label}</Label>
+      <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
+    </div>
   );
 }

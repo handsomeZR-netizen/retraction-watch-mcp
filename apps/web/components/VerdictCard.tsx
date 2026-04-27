@@ -1,5 +1,10 @@
+"use client";
+
+import { CheckCircle, Warning, XCircle } from "@phosphor-icons/react";
+import type { Icon } from "@phosphor-icons/react";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
 
 export type Verdict = "PASS" | "REVIEW" | "FAIL";
 
@@ -8,31 +13,31 @@ const META: Record<
   {
     label: string;
     sub: string;
-    badgeClass: string;
-    icon: typeof CheckCircle2;
+    badge: "success" | "warning" | "destructive";
+    icon: Icon;
     ringClass: string;
   }
 > = {
   PASS: {
     label: "通过",
     sub: "未发现引用了撤稿数据库中的文献",
-    badgeClass: "badge-pass",
-    icon: CheckCircle2,
-    ringClass: "bg-success/10 text-success ring-success/30",
+    badge: "success",
+    icon: CheckCircle,
+    ringClass: "bg-success/10 text-success",
   },
   REVIEW: {
     label: "待复核",
     sub: "存在弱匹配；建议人工复核",
-    badgeClass: "badge-review",
-    icon: AlertTriangle,
-    ringClass: "bg-warning/10 text-warning ring-warning/30",
+    badge: "warning",
+    icon: Warning,
+    ringClass: "bg-warning/10 text-warning",
   },
   FAIL: {
     label: "不通过",
     sub: "至少 1 条参考文献已确认为撤稿文献",
-    badgeClass: "badge-fail",
+    badge: "destructive",
     icon: XCircle,
-    ringClass: "bg-destructive/10 text-destructive ring-destructive/30",
+    ringClass: "bg-destructive/10 text-destructive",
   },
 };
 
@@ -52,40 +57,38 @@ export function VerdictCard({
   const m = META[verdict];
   const Icon = m.icon;
   return (
-    <div className="grid lg:grid-cols-[auto_1fr] gap-6 items-stretch">
-      <div className="flex flex-col items-center justify-center px-6 py-5 rounded-md surface-2 min-w-[200px]">
+    <div className="grid lg:grid-cols-[auto_1fr] gap-4 items-stretch">
+      <Card className="px-6 py-5 flex flex-col items-center justify-center min-w-[210px]">
         <div
           className={cn(
-            "w-14 h-14 rounded-full flex items-center justify-center ring-2",
+            "grid h-14 w-14 place-items-center rounded-full",
             m.ringClass,
           )}
         >
-          <Icon className="w-7 h-7" strokeWidth={2.1} />
+          <Icon className="h-8 w-8" weight="duotone" />
         </div>
-        <span className={cn("badge badge-lg mt-3", m.badgeClass)}>
+        <Badge variant={m.badge} className="mt-3 text-[0.7rem] uppercase tracking-[0.08em] py-1 px-3">
           {verdict}
-        </span>
-        <div className="text-base font-medium text-foreground mt-3">
-          {m.label}
-        </div>
+        </Badge>
+        <div className="text-base font-medium mt-3">{m.label}</div>
         <div className="text-xs text-muted-foreground mt-1 text-center max-w-[180px]">
           {m.sub}
         </div>
-      </div>
+      </Card>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Tile label="参考文献" value={totals.references} accent="info" />
+        <Tile label="参考文献" value={totals.references} accent="muted" />
         <Tile
           label="确认命中"
           value={totals.confirmed}
-          accent={totals.confirmed > 0 ? "fail" : "muted"}
+          accent={totals.confirmed > 0 ? "destructive" : "muted"}
         />
         <Tile
           label="疑似"
           value={totals.likely + totals.possible}
-          accent={totals.likely + totals.possible > 0 ? "review" : "muted"}
+          accent={totals.likely + totals.possible > 0 ? "warning" : "muted"}
         />
-        <Tile label="清洁" value={totals.clean} accent="pass" />
+        <Tile label="清洁" value={totals.clean} accent="success" />
       </div>
     </div>
   );
@@ -98,23 +101,22 @@ function Tile({
 }: {
   label: string;
   value: number;
-  accent: "pass" | "review" | "fail" | "info" | "muted";
+  accent: "success" | "warning" | "destructive" | "muted";
 }) {
   const colorClass = {
-    pass: "text-success",
-    review: "text-warning",
-    fail: "text-destructive",
-    info: "text-primary",
-    muted: "text-muted-foreground",
+    success: "text-success",
+    warning: "text-warning",
+    destructive: "text-destructive",
+    muted: "text-foreground",
   }[accent];
   return (
-    <div className="px-4 py-4 rounded-md surface-2">
+    <Card className="p-4">
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
         {label}
       </div>
-      <div className={cn("text-2xl font-semibold mt-1 tabular-nums", colorClass)}>
+      <div className={cn("text-3xl font-semibold mt-1 tabular-nums", colorClass)}>
         {value}
       </div>
-    </div>
+    </Card>
   );
 }

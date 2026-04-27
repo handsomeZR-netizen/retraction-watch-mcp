@@ -1,17 +1,19 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import {
   Check,
-  CircleAlert,
-  CloudUpload,
-  FileSearch,
+  Warning,
+  CloudArrowUp,
+  MagnifyingGlass,
   FileText,
   Hash,
-  ListCheck,
-  Sparkles,
-} from "lucide-react";
-import { Spinner } from "./Spinner";
+  Sparkle,
+  CheckCircle,
+  CircleNotch,
+  ListChecks,
+  type Icon as PIcon,
+} from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
 
 export type Stage =
   | "uploaded"
@@ -33,19 +35,18 @@ const STAGE_ORDER: Stage[] = [
   "done",
 ];
 
-const STAGE_META: Record<
-  Stage,
-  { label: string; icon: typeof Check }
-> = {
-  uploaded: { label: "已上传", icon: CloudUpload },
+const STAGE_META: Record<Stage, { label: string; icon: PIcon }> = {
+  uploaded: { label: "已上传", icon: CloudArrowUp },
   text_extracted: { label: "文本提取", icon: FileText },
   metadata_extracted: { label: "元数据识别", icon: Hash },
-  refs_segmented: { label: "参考文献切分", icon: FileSearch },
-  refs_structured: { label: "结构化抽取", icon: Sparkles },
-  screening: { label: "比对撤稿库", icon: ListCheck },
-  done: { label: "完成", icon: Check },
-  error: { label: "错误", icon: CircleAlert },
+  refs_segmented: { label: "参考文献切分", icon: MagnifyingGlass },
+  refs_structured: { label: "结构化抽取", icon: Sparkle },
+  screening: { label: "比对撤稿库", icon: ListChecks },
+  done: { label: "完成", icon: CheckCircle },
+  error: { label: "错误", icon: Warning },
 };
+
+void Check;
 
 export interface TimelineEvent {
   stage: Stage;
@@ -61,46 +62,56 @@ export function ProgressTimeline({ events }: { events: TimelineEvent[] }) {
   const lastStage = events[events.length - 1]?.stage;
 
   return (
-    <ol className="space-y-2">
-      {STAGE_ORDER.map((s) => {
+    <ol className="relative space-y-1">
+      {STAGE_ORDER.map((s, idx) => {
         const ev = [...events].reverse().find((e) => e.stage === s);
         const reached = seen.has(s);
         const active = !errored && lastStage === s && s !== "done";
         const Icon = STAGE_META[s].icon;
+        const isLast = idx === STAGE_ORDER.length - 1;
+
         return (
           <li
             key={s}
             className={cn(
-              "flex items-start gap-3 px-3 py-2 rounded-md transition-colors fade-in-up",
-              reached ? "bg-muted/50" : "opacity-50",
+              "relative flex items-start gap-3 px-2 py-2.5",
+              !reached && "opacity-40",
+              reached && "animate-fade-in-up",
             )}
             style={
-              reached ? { animationDelay: `${STAGE_ORDER.indexOf(s) * 40}ms` } : undefined
+              reached ? { animationDelay: `${idx * 50}ms` } : undefined
             }
           >
+            {!isLast && (
+              <span
+                aria-hidden
+                className={cn(
+                  "absolute left-[1.625rem] top-9 h-[calc(100%-1rem)] w-px",
+                  reached ? "bg-foreground/15" : "bg-border",
+                )}
+              />
+            )}
             <span
               className={cn(
-                "shrink-0 w-7 h-7 rounded-full flex items-center justify-center mt-0.5",
-                active
-                  ? "bg-primary/15 text-primary"
-                  : reached
-                    ? "bg-success/15 text-success"
-                    : "bg-muted text-muted-foreground",
+                "relative z-10 grid h-7 w-7 shrink-0 place-items-center rounded-full",
+                active && "bg-foreground text-background",
+                reached && !active && "bg-success/15 text-success",
+                !reached && "bg-muted text-muted-foreground",
               )}
             >
               {active ? (
-                <Spinner />
+                <CircleNotch className="h-3.5 w-3.5 animate-spin" weight="bold" />
               ) : (
-                <Icon className="w-3.5 h-3.5" strokeWidth={2.2} />
+                <Icon className="h-3.5 w-3.5" weight={reached ? "bold" : "regular"} />
               )}
             </span>
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 pt-0.5">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-foreground">
+                <span className="text-sm font-medium">
                   {STAGE_META[s].label}
                 </span>
                 {active && (
-                  <span className="text-[10px] text-primary uppercase tracking-wider pulse-soft">
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground animate-pulse">
                     进行中
                   </span>
                 )}
@@ -115,8 +126,11 @@ export function ProgressTimeline({ events }: { events: TimelineEvent[] }) {
         );
       })}
       {errored && (
-        <li className="flex items-start gap-3 px-3 py-2 rounded-md bg-destructive/5 border border-destructive/30 fade-in-up">
-          <CircleAlert className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+        <li className="flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2.5">
+          <Warning
+            className="h-4 w-4 text-destructive mt-0.5 shrink-0"
+            weight="fill"
+          />
           <div className="flex-1 text-sm text-destructive">
             {events.find((e) => e.stage === "error")?.message ?? "未知错误"}
           </div>

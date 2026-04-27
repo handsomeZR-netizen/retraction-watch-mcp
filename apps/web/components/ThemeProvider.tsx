@@ -8,7 +8,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       attribute="data-theme"
       defaultTheme="light"
       enableSystem={false}
-      disableTransitionOnChange={false}
       themes={["light", "dark"]}
     >
       {children}
