@@ -19,6 +19,12 @@ export function getAppDb(): DB {
 }
 
 function migrate(db: DB): void {
+  const current = (db.pragma("user_version", { simple: true }) as number) ?? 0;
+  if (current < 1) applyV1(db);
+  if (current < 2) applyV2(db);
+}
+
+function applyV1(db: DB): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id              TEXT PRIMARY KEY,
@@ -60,5 +66,19 @@ function migrate(db: DB): void {
       created_at      TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_audit_user_time ON audit_log(user_id, created_at DESC);
+    PRAGMA user_version = 1;
   `);
+}
+
+function applyV2(db: DB): void {
+  const cols = (db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).map(
+    (r) => r.name,
+  );
+  if (!cols.includes("avatar_seed")) {
+    db.exec("ALTER TABLE users ADD COLUMN avatar_seed TEXT");
+  }
+  if (!cols.includes("llm_settings_json")) {
+    db.exec("ALTER TABLE users ADD COLUMN llm_settings_json TEXT");
+  }
+  db.exec("PRAGMA user_version = 2");
 }

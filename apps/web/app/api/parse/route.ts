@@ -13,6 +13,7 @@ import {
   markManuscriptDone,
   markManuscriptError,
 } from "@/lib/db/manuscripts";
+import { findUserById, getUserLlmSettings } from "@/lib/db/users";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -49,14 +50,18 @@ export async function GET(req: Request) {
         message: `${upload.fileName} (${(upload.bytes / 1024).toFixed(1)} KB)`,
       });
 
-      const llm =
-        config.llm.enabled && config.llm.apiKey
-          ? {
-              baseUrl: config.llm.baseUrl,
-              apiKey: config.llm.apiKey,
-              model: config.llm.model,
-            }
-          : undefined;
+      const userRow = findUserById(user.id);
+      const userLlm = userRow ? getUserLlmSettings(userRow) : null;
+      const effLlm = {
+        enabled: userLlm?.enabled ?? config.llm.enabled,
+        baseUrl: userLlm?.baseUrl || config.llm.baseUrl,
+        apiKey: userLlm?.apiKey || config.llm.apiKey,
+        model: userLlm?.model || config.llm.model,
+        enableHeaderParse: userLlm?.enableHeaderParse ?? config.llm.enableHeaderParse,
+      };
+      const llm = effLlm.enabled && effLlm.apiKey
+        ? { baseUrl: effLlm.baseUrl, apiKey: effLlm.apiKey, model: effLlm.model }
+        : undefined;
 
       const result = await screenManuscript(
         repo,
@@ -69,7 +74,7 @@ export async function GET(req: Request) {
         {
           policy: BALANCED_POLICY,
           llm,
-          llmHeader: config.llm.enabled && config.llm.enableHeaderParse,
+          llmHeader: effLlm.enabled && effLlm.enableHeaderParse,
           cloudOcr: config.ocr.cloudEnabled,
           progress: (ev) => sink.write(ev),
         },

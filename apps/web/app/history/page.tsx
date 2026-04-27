@@ -69,14 +69,22 @@ export default function HistoryPage() {
 
   return (
     <div className="space-y-6">
-      <header className="space-y-2">
-        <h1 className="flex items-center gap-2 text-3xl font-semibold tracking-tight">
-          <ClockCounterClockwise className="h-7 w-7" weight="duotone" />
-          历史记录
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          只显示你自己上传的稿件。点击进入详情页查看证据明细，或直接下载报告。
-        </p>
+      <header className="flex items-end justify-between gap-4 flex-wrap">
+        <div className="space-y-2">
+          <h1 className="flex items-center gap-2 text-3xl font-semibold tracking-tight">
+            <ClockCounterClockwise className="h-7 w-7" weight="duotone" />
+            历史记录
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            只显示你自己上传的稿件。点击进入详情页查看证据明细，或直接下载报告。
+          </p>
+        </div>
+        <Button variant="outline" size="sm" asChild>
+          <a href="/api/manuscripts/export">
+            <DownloadSimple className="h-4 w-4" weight="bold" />
+            导出全部 (NDJSON)
+          </a>
+        </Button>
       </header>
 
       {!items && (

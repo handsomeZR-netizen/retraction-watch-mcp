@@ -7,10 +7,12 @@ import {
   CaretDown,
   ClockCounterClockwise,
   Gear,
+  IdentificationCard,
   ShieldStar,
   SignOut,
   User,
 } from "@phosphor-icons/react";
+import { avatarUrl } from "@/lib/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -26,6 +28,7 @@ interface Me {
   username: string;
   displayName: string | null;
   role: "user" | "admin";
+  avatarSeed?: string;
 }
 
 export function UserMenu() {
@@ -36,13 +39,19 @@ export function UserMenu() {
     void fetch("/api/auth/me").then(async (res) => {
       if (!res.ok) return;
       const j = (await res.json()) as { user: Me | null };
+      if (!j.user) return;
       setMe(j.user);
+      const profileRes = await fetch("/api/account/profile");
+      if (profileRes.ok) {
+        const p = (await profileRes.json()) as { avatarSeed?: string };
+        setMe((prev) => (prev ? { ...prev, avatarSeed: p.avatarSeed ?? prev.username } : prev));
+      }
     });
   }, []);
 
   if (!me) return null;
 
-  const initial = (me.displayName ?? me.username).charAt(0).toUpperCase();
+  const seed = me.avatarSeed ?? me.username;
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -54,9 +63,14 @@ export function UserMenu() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="sm" className="gap-2 px-2 h-8">
-          <span className="grid h-6 w-6 place-items-center rounded-full bg-foreground text-background text-[10px] font-semibold">
-            {initial}
-          </span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={avatarUrl(seed, { size: 48 })}
+            alt=""
+            width={24}
+            height={24}
+            className="rounded-full bg-muted"
+          />
           <span className="text-sm hidden sm:inline">{me.displayName ?? me.username}</span>
           <CaretDown className="h-3 w-3 text-muted-foreground" weight="bold" />
         </Button>
@@ -73,6 +87,12 @@ export function UserMenu() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
+          <Link href="/account">
+            <IdentificationCard className="h-4 w-4" weight="duotone" />
+            账户
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
           <Link href="/history">
             <ClockCounterClockwise className="h-4 w-4" weight="duotone" />
             历史记录
@@ -85,9 +105,11 @@ export function UserMenu() {
           </Link>
         </DropdownMenuItem>
         {me.role === "admin" && (
-          <DropdownMenuItem disabled>
-            <ShieldStar className="h-4 w-4" weight="duotone" />
-            管理员
+          <DropdownMenuItem asChild>
+            <Link href="/admin">
+              <ShieldStar className="h-4 w-4" weight="duotone" />
+              管理员
+            </Link>
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />

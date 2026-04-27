@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { href: "/", label: "首页" },
   { href: "/history", label: "历史" },
+  { href: "/account", label: "账户" },
   { href: "/settings", label: "设置" },
 ];
 

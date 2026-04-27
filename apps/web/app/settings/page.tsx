@@ -9,6 +9,8 @@ import {
   FloppyDisk,
   ShieldCheck,
   Clock,
+  Sparkle,
+  TrashSimple,
   type Icon,
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
@@ -97,7 +99,9 @@ export default function SettingsPage() {
         </p>
       </header>
 
-      <SettingsCard icon={Brain} title="LLM 增强" sub="DeepSeek / OpenAI 兼容服务，用于结构化抽取无 DOI 的参考文献">
+      <UserLlmCard />
+
+      <SettingsCard icon={Brain} title="LLM 增强（系统默认）" sub="所有未单独配置的用户使用这一份配置。启用 LLM 才会发起出网请求">
         <ToggleRow
           label="启用 LLM 参考文献增强解析"
           checked={config.llm.enabled}
@@ -289,6 +293,175 @@ function SettingsCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">{children}</CardContent>
+    </Card>
+  );
+}
+
+interface UserLlmConfig {
+  enabled: boolean;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  enableHeaderParse: boolean;
+  hasApiKey: boolean;
+}
+
+function UserLlmCard() {
+  const [cfg, setCfg] = useState<UserLlmConfig | null>(null);
+  const [keyDraft, setKeyDraft] = useState("");
+  const [showKey, setShowKey] = useState(false);
+
+  useEffect(() => {
+    void fetch("/api/account/llm").then(async (res) => {
+      if (!res.ok) return;
+      setCfg((await res.json()) as UserLlmConfig);
+    });
+  }, []);
+
+  if (!cfg) return <Skeleton className="h-64 w-full" />;
+
+  async function patch(partial: Partial<UserLlmConfig>) {
+    const res = await fetch("/api/account/llm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(partial),
+    });
+    if (!res.ok) {
+      toast.error("保存失败");
+      return;
+    }
+    setCfg((await res.json()) as UserLlmConfig);
+    toast.success("已保存");
+  }
+
+  async function clearAll() {
+    if (!confirm("清除你的私人 LLM 配置？之后会回退使用系统默认配置。")) return;
+    const res = await fetch("/api/account/llm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clear: true }),
+    });
+    if (!res.ok) {
+      toast.error("操作失败");
+      return;
+    }
+    setCfg((await res.json()) as UserLlmConfig);
+    setKeyDraft("");
+    toast.success("已清除");
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-3">
+          <span className="grid h-9 w-9 place-items-center rounded-md bg-primary/10 text-primary">
+            <Sparkle className="h-4 w-4" weight="duotone" />
+          </span>
+          <div className="flex-1">
+            <CardTitle className="text-base">我的 LLM 配置（覆盖系统默认）</CardTitle>
+            <CardDescription className="text-xs mt-0.5">
+              如果你填了，解析时优先使用你的 key 和模型；留空则回退到系统默认。
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between gap-3 rounded-md border bg-card px-4 py-3">
+          <Label className="text-sm flex-1">启用我的私人 LLM 配置</Label>
+          <Switch
+            checked={cfg.enabled}
+            onCheckedChange={(v) => void patch({ enabled: v })}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-3 rounded-md border bg-card px-4 py-3">
+          <Label className="text-sm flex-1">启用 LLM 首页元数据增强</Label>
+          <Switch
+            checked={cfg.enableHeaderParse}
+            disabled={!cfg.enabled}
+            onCheckedChange={(v) => void patch({ enableHeaderParse: v })}
+          />
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="userBaseUrl">Base URL</Label>
+            <Input
+              id="userBaseUrl"
+              value={cfg.baseUrl}
+              placeholder="https://api.deepseek.com/v1"
+              onChange={(e) => setCfg({ ...cfg, baseUrl: e.target.value })}
+              onBlur={(e) => void patch({ baseUrl: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="userModel">Model</Label>
+            <Input
+              id="userModel"
+              className="font-mono"
+              value={cfg.model}
+              placeholder="deepseek-v4-flash"
+              onChange={(e) => setCfg({ ...cfg, model: e.target.value })}
+              onBlur={(e) => void patch({ model: e.target.value })}
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="userApiKey" className="flex items-center gap-2">
+            API Key
+            {cfg.hasApiKey && (
+              <span className="text-success text-xs font-normal">· 已保存</span>
+            )}
+          </Label>
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Input
+                id="userApiKey"
+                type={showKey ? "text" : "password"}
+                className="font-mono pr-10"
+                value={keyDraft}
+                onChange={(e) => setKeyDraft(e.target.value)}
+                placeholder={cfg.hasApiKey ? "留空表示不修改" : "sk-..."}
+              />
+              <button
+                type="button"
+                onClick={() => setShowKey(!showKey)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+                aria-label="toggle visibility"
+              >
+                {showKey ? (
+                  <EyeSlash className="h-4 w-4" weight="duotone" />
+                ) : (
+                  <Eye className="h-4 w-4" weight="duotone" />
+                )}
+              </button>
+            </div>
+            <Button
+              disabled={!keyDraft}
+              onClick={async () => {
+                if (!keyDraft) return;
+                await patch({ apiKey: keyDraft });
+                setKeyDraft("");
+              }}
+            >
+              <FloppyDisk className="h-4 w-4" weight="bold" />
+              保存 Key
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            私人配置存在 users 表的 llm_settings_json 列；只有你自己能读到，不会回到前端明文。
+          </p>
+        </div>
+
+        <Separator />
+
+        <div className="flex justify-end">
+          <Button variant="ghost" size="sm" onClick={clearAll} className="text-destructive">
+            <TrashSimple className="h-4 w-4" weight="duotone" />
+            清除我的私人配置
+          </Button>
+        </div>
+      </CardContent>
     </Card>
   );
 }

@@ -11,6 +11,65 @@ export interface UserRow {
   last_login_at: string | null;
   disabled: 0 | 1;
   session_version: number;
+  avatar_seed: string | null;
+  llm_settings_json: string | null;
+}
+
+export interface UserLlmSettings {
+  enabled?: boolean;
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  enableHeaderParse?: boolean;
+}
+
+export function getUserLlmSettings(user: UserRow): UserLlmSettings | null {
+  if (!user.llm_settings_json) return null;
+  try {
+    return JSON.parse(user.llm_settings_json) as UserLlmSettings;
+  } catch {
+    return null;
+  }
+}
+
+export function setUserLlmSettings(userId: string, value: UserLlmSettings | null): void {
+  getAppDb()
+    .prepare("UPDATE users SET llm_settings_json = ? WHERE id = ?")
+    .run(value ? JSON.stringify(value) : null, userId);
+}
+
+export function setUserPassword(userId: string, passwordHash: string): void {
+  getAppDb()
+    .prepare(
+      "UPDATE users SET password_hash = ?, session_version = session_version + 1 WHERE id = ?",
+    )
+    .run(passwordHash, userId);
+}
+
+export function setDisplayName(userId: string, displayName: string | null): void {
+  getAppDb()
+    .prepare("UPDATE users SET display_name = ? WHERE id = ?")
+    .run(displayName, userId);
+}
+
+export function setAvatarSeed(userId: string, seed: string | null): void {
+  getAppDb()
+    .prepare("UPDATE users SET avatar_seed = ? WHERE id = ?")
+    .run(seed, userId);
+}
+
+export function listAllUsers(): UserRow[] {
+  return getAppDb()
+    .prepare("SELECT * FROM users ORDER BY created_at DESC")
+    .all() as UserRow[];
+}
+
+export function setUserDisabled(userId: string, disabled: boolean): void {
+  getAppDb()
+    .prepare(
+      "UPDATE users SET disabled = ?, session_version = session_version + 1 WHERE id = ?",
+    )
+    .run(disabled ? 1 : 0, userId);
 }
 
 export function findUserByUsername(username: string): UserRow | null {
