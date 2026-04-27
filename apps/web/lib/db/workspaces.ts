@@ -202,7 +202,14 @@ export function revokeInvite(token: string): void {
 }
 
 export function deleteWorkspace(id: string): void {
-  getAppDb().prepare("DELETE FROM workspaces WHERE id = ?").run(id);
+  const db = getAppDb();
+  const tx = db.transaction(() => {
+    // Manuscripts have no FK on workspace_id; revert them to the uploader's personal scope.
+    db.prepare("UPDATE manuscripts SET workspace_id = NULL WHERE workspace_id = ?").run(id);
+    db.prepare("UPDATE users SET active_workspace_id = NULL WHERE active_workspace_id = ?").run(id);
+    db.prepare("DELETE FROM workspaces WHERE id = ?").run(id);
+  });
+  tx();
 }
 
 export function renameWorkspace(id: string, name: string): void {

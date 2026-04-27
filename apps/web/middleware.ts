@@ -12,11 +12,13 @@ const PUBLIC_PATH_PREFIXES = ["/reset/", "/verify/", "/invite/"];
 const PUBLIC_API_PREFIXES = [
   "/api/auth/login",
   "/api/auth/register",
+  "/api/auth/me",
   "/api/auth/forgot-password",
   "/api/auth/reset-password",
   "/api/auth/verify-email",
   "/api/auth/oauth",
   "/api/health",
+  "/api/workspaces/invite/",
 ];
 
 export function middleware(req: NextRequest) {
