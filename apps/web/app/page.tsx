@@ -2,13 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Database,
-  MagnifyingGlass,
-  ShieldCheck,
-  Sparkle,
-} from "@phosphor-icons/react";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Dropzone } from "@/components/Dropzone";
 import { ParseOverlay } from "@/components/ParseOverlay";
 import {
@@ -16,15 +11,69 @@ import {
   type TimelineEvent,
 } from "@/components/ProgressTimeline";
 import { Badge } from "@/components/ui/badge";
+import { QuickActions } from "@/components/dashboard/QuickActions";
+import { RecentList } from "@/components/dashboard/RecentList";
+import { ScopeBanner } from "@/components/dashboard/ScopeBanner";
+import { StatsRow } from "@/components/dashboard/StatsRow";
+
+interface Dashboard {
+  user: {
+    id: string;
+    displayName: string | null;
+    username: string;
+    role: "admin" | "user";
+    avatarSeed: string;
+  };
+  scope: { workspaceId: string | null };
+  workspace: { id: string; name: string; slug: string; memberCount: number } | null;
+  stats: {
+    total: number;
+    pass: number;
+    review: number;
+    fail: number;
+    parsing: number;
+    error: number;
+    last7d: number;
+  };
+  recent: Array<{
+    id: string;
+    fileName: string;
+    fileType: string;
+    uploadedAt: string;
+    status: "parsing" | "done" | "error";
+    verdict: "PASS" | "REVIEW" | "FAIL" | null;
+    title: string | null;
+    totals: Record<string, number> | null;
+  }>;
+  llm: { enabled: boolean; model: string };
+  source: { rowCount: number; generatedOn: string | null } | null;
+}
 
 export default function HomePage() {
   const router = useRouter();
+  const [data, setData] = useState<Dashboard | null>(null);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fileLabel, setFileLabel] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState(false);
   const sseRef = useRef<EventSource | null>(null);
+
+  const loadDashboard = useCallback(async () => {
+    try {
+      const res = await fetch("/api/dashboard");
+      if (res.ok) {
+        const j = (await res.json()) as Dashboard;
+        setData(j);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
 
   useEffect(() => () => sseRef.current?.close(), []);
 
@@ -94,41 +143,33 @@ export default function HomePage() {
   );
 
   return (
-    <div className="space-y-12">
-      {transitioning && fileLabel && (
-        <ParseOverlay fileName={fileLabel} />
-      )}
-      <section className="grid lg:grid-cols-[1.4fr_1fr] gap-10 items-start">
-        <div className="space-y-5">
-          <Badge variant="muted" className="text-[10px] uppercase tracking-wider">
-            <Sparkle className="h-3 w-3" weight="fill" />
-            学术诚信筛查 · 本地优先
-          </Badge>
-          <h1 className="text-4xl md:text-5xl font-semibold tracking-tight leading-[1.05]">
-            一键检测稿件是否
-            <br />
-            引用了
-            <span className="relative">
-              <span className="relative z-10">撤稿文献</span>
-              <span
-                aria-hidden
-                className="absolute inset-x-0 bottom-1 h-2 bg-warning/30 -z-0"
-              />
-            </span>
-          </h1>
-          <p className="text-muted-foreground text-base leading-relaxed max-w-xl">
-            拖拽 PDF / Word / LaTeX 文件到下方，自动抽取作者信息和参考文献，比对本地
-            Retraction Watch 数据库。所有解析默认在本地完成，启用 LLM
-            增强或云 OCR 才会发起出网请求。
-          </p>
-          <div className="flex items-center gap-5 text-xs text-muted-foreground pt-1">
-            <Tag icon={Database}>RW 全量</Tag>
-            <Tag icon={ShieldCheck}>三档裁决</Tag>
-            <Tag icon={MagnifyingGlass}>可解释证据</Tag>
-          </div>
-        </div>
+    <div className="space-y-8">
+      {transitioning && fileLabel && <ParseOverlay fileName={fileLabel} />}
 
-        <div className="lg:sticky lg:top-24">
+      <section className="grid lg:grid-cols-[1.4fr_1fr] gap-8 items-start">
+        <div>
+          {data ? (
+            <ScopeBanner
+              user={{
+                displayName: data.user.displayName,
+                username: data.user.username,
+              }}
+              workspace={data.workspace}
+              llm={data.llm}
+              source={data.source}
+            />
+          ) : (
+            <div className="space-y-3">
+              <Skeleton className="h-10 w-56" />
+              <div className="flex gap-2">
+                <Skeleton className="h-7 w-32" />
+                <Skeleton className="h-7 w-32" />
+                <Skeleton className="h-7 w-40" />
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="lg:sticky lg:top-20">
           <Dropzone
             onDrop={onDrop}
             busy={busy}
@@ -136,6 +177,16 @@ export default function HomePage() {
           />
         </div>
       </section>
+
+      {data ? (
+        <StatsRow stats={data.stats} />
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-20" />
+          ))}
+        </div>
+      )}
 
       {error && (
         <Card className="border-destructive/50 bg-destructive/5 p-4 text-sm text-destructive animate-fade-in-up">
@@ -157,59 +208,22 @@ export default function HomePage() {
         </Card>
       )}
 
-      <section className="grid md:grid-cols-3 gap-4">
-        <Feature
-          icon={MagnifyingGlass}
-          title="参考文献抽取"
-          desc="正则抽 DOI/PMID 覆盖现代论文 90%，无 DOI 的可选 LLM 结构化兜底。"
-        />
-        <Feature
-          icon={Database}
-          title="多路匹配"
-          desc="DOI/PMID 精确命中、标题 Jaccard、作者重叠、年份 ±1，支持中文拼音回退。"
-        />
-        <Feature
-          icon={ShieldCheck}
-          title="可解释证据"
-          desc="每条命中附 evidence 强弱明细；导出 JSON / CSV 报告供编辑复核。"
-        />
+      <section className="grid lg:grid-cols-[1.4fr_1fr] gap-6 items-start">
+        <div>
+          {data ? (
+            <RecentList items={data.recent} />
+          ) : (
+            <Skeleton className="h-64 w-full" />
+          )}
+        </div>
+        <div>
+          {data ? (
+            <QuickActions role={data.user.role} />
+          ) : (
+            <Skeleton className="h-56 w-full" />
+          )}
+        </div>
       </section>
     </div>
-  );
-}
-
-function Tag({
-  icon: Icon,
-  children,
-}: {
-  icon: typeof Database;
-  children: React.ReactNode;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <Icon className="h-3.5 w-3.5" weight="duotone" />
-      {children}
-    </span>
-  );
-}
-
-function Feature({
-  icon: Icon,
-  title,
-  desc,
-}: {
-  icon: typeof Database;
-  title: string;
-  desc: string;
-}) {
-  return (
-    <Card className="p-5 transition-colors hover:bg-accent/30">
-      <Icon
-        className="h-5 w-5 text-foreground mb-3"
-        weight="duotone"
-      />
-      <h3 className="text-sm font-semibold mb-1.5">{title}</h3>
-      <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
-    </Card>
   );
 }
