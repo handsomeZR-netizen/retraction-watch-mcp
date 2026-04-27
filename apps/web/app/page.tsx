@@ -10,6 +10,7 @@ import {
 } from "@phosphor-icons/react";
 import { Card } from "@/components/ui/card";
 import { Dropzone } from "@/components/Dropzone";
+import { ParseOverlay } from "@/components/ParseOverlay";
 import {
   ProgressTimeline,
   type TimelineEvent,
@@ -22,6 +23,7 @@ export default function HomePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fileLabel, setFileLabel] = useState<string | null>(null);
+  const [transitioning, setTransitioning] = useState(false);
   const sseRef = useRef<EventSource | null>(null);
 
   useEffect(() => () => sseRef.current?.close(), []);
@@ -59,10 +61,12 @@ export default function HomePage() {
             if (payload.stage === "done") {
               sse.close();
               sseRef.current = null;
+              setTransitioning(true);
+              router.prefetch(`/result/${encodeURIComponent(manuscriptId)}`);
               setTimeout(
                 () =>
                   router.push(`/result/${encodeURIComponent(manuscriptId)}`),
-                500,
+                700,
               );
             }
             if (payload.stage === "error") {
@@ -91,6 +95,9 @@ export default function HomePage() {
 
   return (
     <div className="space-y-12">
+      {transitioning && fileLabel && (
+        <ParseOverlay fileName={fileLabel} />
+      )}
       <section className="grid lg:grid-cols-[1.4fr_1fr] gap-10 items-start">
         <div className="space-y-5">
           <Badge variant="muted" className="text-[10px] uppercase tracking-wider">

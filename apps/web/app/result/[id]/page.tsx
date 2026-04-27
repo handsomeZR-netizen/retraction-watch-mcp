@@ -14,8 +14,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { ReferenceTable } from "@/components/ReferenceTable";
+import { ResultLayout } from "@/components/ResultLayout";
 import { VerdictCard } from "@/components/VerdictCard";
 import { Separator } from "@/components/ui/separator";
+import { getManuscript } from "@/lib/db/manuscripts";
 import { getResult } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -28,9 +30,10 @@ export default async function ResultPage({
   const { id } = await params;
   const result = await getResult(id);
   if (!result) notFound();
+  const manuscript = getManuscript(id);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <Button variant="ghost" size="sm" asChild className="-ml-3">
         <Link href="/">
           <ArrowLeft className="h-4 w-4" weight="bold" />
@@ -38,6 +41,12 @@ export default async function ResultPage({
         </Link>
       </Button>
 
+      <ResultLayout
+        manuscriptId={id}
+        fileName={result.fileName}
+        fileType={result.fileType}
+        bytes={manuscript?.bytes ?? null}
+      >
       <Card className="p-6 space-y-6">
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div className="flex-1 min-w-0">
@@ -213,6 +222,7 @@ export default async function ResultPage({
           </div>
         </div>
       </Card>
+      </ResultLayout>
     </div>
   );
 }

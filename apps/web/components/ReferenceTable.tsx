@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   CaretRight,
   ArrowSquareOut,
+  ArrowsInLineHorizontal,
+  ArrowsOutLineHorizontal,
   MagnifyingGlass,
   ShieldWarning,
   ShieldCheck,
@@ -29,10 +31,31 @@ const FILTERS: Array<{ key: ReferenceVerdict | "all"; label: string }> = [
   { key: "no_match", label: "清洁" },
 ];
 
+function isHit(v: ReferenceVerdict): boolean {
+  return v === "confirmed" || v === "likely_match" || v === "possible_match";
+}
+
 export function ReferenceTable({ entries }: { entries: Entry[] }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ReferenceVerdict | "all">("all");
-  const [openIdx, setOpenIdx] = useState<number | null>(null);
+
+  const initialOpen = useMemo(() => {
+    const s = new Set<number>();
+    entries.forEach((e, i) => {
+      if (isHit(e.result.verdict)) s.add(i);
+    });
+    return s;
+  }, [entries]);
+  const [openSet, setOpenSet] = useState<Set<number>>(initialOpen);
+
+  function toggle(i: number) {
+    setOpenSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  }
 
   const filtered = entries
     .map((entry, originalIndex) => ({ entry, originalIndex }))
@@ -49,6 +72,17 @@ export function ReferenceTable({ entries }: { entries: Entry[] }) {
       );
     });
 
+  const visibleIdx = filtered.map((f) => f.originalIndex);
+  const visibleAllOpen =
+    visibleIdx.length > 0 && visibleIdx.every((i) => openSet.has(i));
+
+  function expandAll() {
+    setOpenSet(new Set(visibleIdx));
+  }
+  function collapseAll() {
+    setOpenSet(new Set());
+  }
+
   return (
     <Card className="overflow-hidden">
       <div className="px-5 py-4 border-b border-border flex items-center justify-between flex-wrap gap-3">
@@ -59,7 +93,7 @@ export function ReferenceTable({ entries }: { entries: Entry[] }) {
           </Badge>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative w-64">
+          <div className="relative w-56">
             <MagnifyingGlass className="h-3.5 w-3.5 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
             <Input
               type="search"
@@ -87,6 +121,21 @@ export function ReferenceTable({ entries }: { entries: Entry[] }) {
               </Button>
             ))}
           </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={visibleAllOpen ? collapseAll : expandAll}
+            className="h-7 px-2.5 text-xs"
+            disabled={visibleIdx.length === 0}
+            title={visibleAllOpen ? "全部折叠" : "全部展开"}
+          >
+            {visibleAllOpen ? (
+              <ArrowsInLineHorizontal className="h-3.5 w-3.5" weight="bold" />
+            ) : (
+              <ArrowsOutLineHorizontal className="h-3.5 w-3.5" weight="bold" />
+            )}
+            {visibleAllOpen ? "折叠" : "展开"}
+          </Button>
         </div>
       </div>
 
@@ -97,7 +146,7 @@ export function ReferenceTable({ entries }: { entries: Entry[] }) {
           </li>
         )}
         {filtered.map(({ entry, originalIndex }) => {
-          const open = openIdx === originalIndex;
+          const open = openSet.has(originalIndex);
           return (
             <li
               key={originalIndex}
@@ -110,8 +159,9 @@ export function ReferenceTable({ entries }: { entries: Entry[] }) {
               )}
             >
               <button
-                onClick={() => setOpenIdx(open ? null : originalIndex)}
-                className="w-full text-left px-5 py-3.5 flex items-start gap-3 hover:bg-accent/40 transition-colors"
+                onClick={() => toggle(originalIndex)}
+                aria-expanded={open}
+                className="w-full text-left px-5 py-3.5 flex items-start gap-3 hover:bg-accent/40 transition-colors focus-visible:outline-none focus-visible:bg-accent/40"
               >
                 <span className="text-xs text-muted-foreground w-7 shrink-0 mt-0.5 tabular-nums font-mono">
                   {String(originalIndex + 1).padStart(2, "0")}
