@@ -30,7 +30,10 @@ export function locateAndSplitReferences(doc: ExtractedDocument): RawReference[]
 function findReferencesStart(text: string): number {
   let bestIdx = -1;
   for (const header of SECTION_HEADERS) {
-    const re = new RegExp(`(?:^|\\n)\\s*${escapeRegex(header)}\\s*\\n`, "g");
+    const re = new RegExp(
+      `(?:^|\\n)\\s*${escapeRegex(header)}[\\s\\d.:;,()\\-]*(?:\\n|$)`,
+      "g",
+    );
     let match: RegExpExecArray | null;
     while ((match = re.exec(text)) !== null) {
       if (match.index > bestIdx) {
@@ -95,15 +98,57 @@ function splitEntries(block: string): string[] {
     for (let i = 0; i < matches.length; i += 1) {
       const start = matches[i].index ?? 0;
       const end = i + 1 < matches.length ? matches[i + 1].index ?? flat.length : flat.length;
-      out.push(flat.slice(start, end).replace(/^[\.\)\s]*/, "").replace(lineHeadRe, "").trim());
+      out.push(
+        fixSplitDoi(
+          flat.slice(start, end).replace(/^[\.\)\s]*/, "").replace(lineHeadRe, "").trim(),
+        ),
+      );
     }
     return out.filter((s) => s.length > 25);
   }
+
+  const authorYearOut = splitAuthorYear(lines);
+  if (authorYearOut.length >= 4) return authorYearOut;
 
   const blocks = cleaned
     .split(/\n{2,}/)
     .map((b) => fixSplitDoi(b.replace(/\n/g, " ").replace(/\s+/g, " ").trim()));
   return blocks.filter((b) => b.length > 25 && /\d{4}/.test(b));
+}
+
+function splitAuthorYear(rawLines: string[]): string[] {
+  const lines = rawLines
+    .map((l) =>
+      l
+        .replace(/^\s*(?:References?|REFERENCES|Bibliography|参考文献)[\d\s.:;,()\-]*$/i, "")
+        .replace(/(\d{1,4})\s*$/, "")
+        .trim(),
+    )
+    .filter(Boolean);
+
+  const isAuthorStart = (l: string): boolean => {
+    if (l.length < 8) return false;
+    if (/^\[(\d{1,3})\]\s+/.test(l)) return true;
+    if (/^[A-Z][a-zA-Z'\-]+,\s+[A-Z]\.?/.test(l)) return true;
+    if (/^[A-Z][a-zA-Z'\-]+,\s*[A-Z][a-z]?\.\s*[A-Z]?\.?,/.test(l)) return true;
+    if (/^[\u4e00-\u9fff]{2,4}[,，\s]/.test(l)) return true;
+    return false;
+  };
+
+  const out: string[] = [];
+  let current = "";
+  for (const l of lines) {
+    if (isAuthorStart(l) && current.trim()) {
+      out.push(current.trim());
+      current = l;
+    } else {
+      current = current ? current + " " + l : l;
+    }
+  }
+  if (current.trim()) out.push(current.trim());
+  return out
+    .map((s) => fixSplitDoi(s.replace(/\s+/g, " ").trim()))
+    .filter((s) => s.length > 30 && /\d{4}/.test(s));
 }
 
 function fixSplitDoi(text: string): string {

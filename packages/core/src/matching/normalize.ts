@@ -83,7 +83,15 @@ export function extractDoi(text: string): string | null {
   if (!text) return null;
   const m = text.match(DOI_REGEX);
   if (!m) return null;
-  return m[0].replace(/[.,;\)]+$/, "").toLowerCase();
+  let doi = m[0];
+  doi = doi.replace(/[.,;\)\]>"]+$/, "");
+  doi = doi.replace(/\.(?:url|URL|Url|html|htm|pdf|md|txt|aspx?|jsp|php)$/i, "");
+  doi = doi.replace(/\.\d{1,3}$/, (suffix) => {
+    const main = doi.slice(0, doi.length - suffix.length);
+    return /\.[A-Za-z0-9_-]{2,}$/.test(main) ? "" : suffix;
+  });
+  while (/[.,;)\]>]$/.test(doi)) doi = doi.slice(0, -1);
+  return doi.toLowerCase();
 }
 
 export function extractYear(text: string): number | null {
