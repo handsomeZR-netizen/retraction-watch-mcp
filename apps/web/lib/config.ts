@@ -1,0 +1,120 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+export interface AppConfig {
+  llm: {
+    enabled: boolean;
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+    enableHeaderParse: boolean;
+  };
+  ocr: {
+    cloudEnabled: boolean;
+  };
+  retention: {
+    keepUploads: boolean;
+    keepHours: number;
+  };
+}
+
+const DEFAULT_CONFIG: AppConfig = {
+  llm: {
+    enabled: false,
+    baseUrl: "https://api.deepseek.com/v1",
+    apiKey: "",
+    model: "deepseek-v4-flash",
+    enableHeaderParse: false,
+  },
+  ocr: {
+    cloudEnabled: false,
+  },
+  retention: {
+    keepUploads: false,
+    keepHours: 24,
+  },
+};
+
+export function getConfigDir(): string {
+  if (process.env.RW_SCREEN_CONFIG_DIR) {
+    return path.resolve(process.env.RW_SCREEN_CONFIG_DIR);
+  }
+  return path.join(os.homedir(), ".config", "rw-screen");
+}
+
+export function getConfigPath(): string {
+  return path.join(getConfigDir(), "config.json");
+}
+
+export function getDataDir(): string {
+  if (process.env.RW_SCREEN_DATA_DIR) {
+    return path.resolve(process.env.RW_SCREEN_DATA_DIR);
+  }
+  return path.join(getConfigDir(), "manuscripts");
+}
+
+let cachedConfig: AppConfig | null = null;
+let cachedAt = 0;
+const CACHE_TTL_MS = 60_000;
+
+export async function loadConfig(): Promise<AppConfig> {
+  if (cachedConfig && Date.now() - cachedAt < CACHE_TTL_MS) return cachedConfig;
+  try {
+    const text = await fs.readFile(getConfigPath(), "utf8");
+    const raw = JSON.parse(text) as Partial<AppConfig>;
+    cachedConfig = mergeConfig(raw);
+  } catch {
+    cachedConfig = mergeConfig(envOverrides());
+  }
+  cachedAt = Date.now();
+  return cachedConfig;
+}
+
+export async function saveConfig(input: Partial<AppConfig>): Promise<AppConfig> {
+  const merged = mergeConfig({ ...(cachedConfig ?? DEFAULT_CONFIG), ...input });
+  await fs.mkdir(getConfigDir(), { recursive: true });
+  await fs.writeFile(getConfigPath(), JSON.stringify(merged, null, 2));
+  cachedConfig = merged;
+  cachedAt = Date.now();
+  return merged;
+}
+
+export function publicConfig(config: AppConfig): AppConfig {
+  return {
+    ...config,
+    llm: { ...config.llm, apiKey: config.llm.apiKey ? "***" : "" },
+  };
+}
+
+function mergeConfig(raw: Partial<AppConfig>): AppConfig {
+  return {
+    llm: {
+      ...DEFAULT_CONFIG.llm,
+      ...(raw.llm ?? {}),
+    },
+    ocr: {
+      ...DEFAULT_CONFIG.ocr,
+      ...(raw.ocr ?? {}),
+    },
+    retention: {
+      ...DEFAULT_CONFIG.retention,
+      ...(raw.retention ?? {}),
+    },
+  };
+}
+
+function envOverrides(): Partial<AppConfig> {
+  const overrides: Partial<AppConfig> = {};
+  if (process.env.DEEPSAPI_API_KEY || process.env.RW_LLM_API_KEY) {
+    overrides.llm = {
+      ...DEFAULT_CONFIG.llm,
+      enabled: true,
+      apiKey: (process.env.DEEPSAPI_API_KEY ?? process.env.RW_LLM_API_KEY ?? "").trim(),
+      baseUrl: process.env.RW_LLM_BASE_URL ?? DEFAULT_CONFIG.llm.baseUrl,
+      model: process.env.RW_LLM_MODEL ?? DEFAULT_CONFIG.llm.model,
+      enableHeaderParse: false,
+    };
+  }
+  return overrides;
+}

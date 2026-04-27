@@ -1,0 +1,42 @@
+{
+  "name": "@rw/ingest",
+  "version": "0.2.0-dev",
+  "type": "module",
+  "description": "Manuscript ingest pipeline: PDF/Word/LaTeX extraction, metadata + references, LLM client.",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./pdf": "./dist/pdf.js",
+    "./docx": "./dist/docx.js",
+    "./latex": "./dist/latex.js",
+    "./ocr": "./dist/ocr.js",
+    "./refs": "./dist/refs.js",
+    "./metadata": "./dist/metadata.js",
+    "./llm": "./dist/llm-client.js",
+    "./types": "./dist/types.js",
+    "./screen": "./dist/screen-manuscript.js"
+  },
+  "files": ["dist/"],
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@rw/core": "0.2.0-dev",
+    "mammoth": "1.8.0",
+    "openai": "4.78.1",
+    "tesseract.js": "5.1.1",
+    "unpdf": "0.12.1",
+    "yauzl": "3.2.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "25.0.0",
+    "@types/yauzl": "2.10.3",
+    "typescript": "5.9.3",
+    "vitest": "4.0.15"
+  }
+}

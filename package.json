@@ -1,70 +1,33 @@
 {
-  "name": "retraction-watch-mcp",
-  "version": "0.1.0",
+  "name": "rw-screen-monorepo",
+  "version": "0.2.0-dev",
+  "private": true,
   "type": "module",
-  "description": "Local MCP server for conservative Retraction Watch person screening.",
+  "description": "Retraction Watch screening monorepo: core engine + ingest pipeline + Next.js web app.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/handsomeZR-netizen/retraction-watch-mcp.git"
   },
-  "bugs": {
-    "url": "https://github.com/handsomeZR-netizen/retraction-watch-mcp/issues"
-  },
-  "homepage": "https://github.com/handsomeZR-netizen/retraction-watch-mcp#readme",
-  "keywords": [
-    "mcp",
-    "model-context-protocol",
-    "retraction-watch",
-    "crossref",
-    "research-integrity",
-    "academic-integrity"
+  "workspaces": [
+    "packages/*",
+    "apps/*"
   ],
-  "main": "./dist/index.js",
-  "files": [
-    "dist/",
-    "docs/",
-    "mcpb/manifest.json",
-    "policies/",
-    "README.md",
-    "LICENSE"
-  ],
-  "bin": {
-    "rw-mcp": "./dist/index.js",
-    "rw-import": "./dist/cli/import.js",
-    "rw-query": "./dist/cli/query.js",
-    "rw-doctor": "./dist/cli/doctor.js"
-  },
   "scripts": {
-    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "build": "npm run clean && tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "check": "npm run typecheck && npm run test && npm run build && npm pack --dry-run",
-    "prepack": "npm run build",
-    "mcpb:stage": "npm run build && node dist/scripts/prepare-mcpb.js",
-    "mcpb:pack": "npm run mcpb:stage && npx -y @anthropic-ai/mcpb pack mcpb/build/retraction-watch-mcp",
-    "import": "node dist/cli/import.js",
-    "query": "node dist/cli/query.js",
-    "doctor": "node dist/cli/doctor.js",
-    "mcp": "node dist/index.js",
-    "dev:import": "tsx src/cli/import.ts",
-    "dev:query": "tsx src/cli/query.ts",
-    "dev:mcp": "tsx src/index.ts",
-    "test": "vitest run",
-    "test:watch": "vitest"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "1.29.0",
-    "csv-parse": "5.6.0",
-    "sql.js": "1.14.1",
-    "zod": "3.25.76"
-  },
-  "devDependencies": {
-    "@types/node": "25.0.0",
-    "@types/sql.js": "^1.4.11",
-    "tsx": "4.21.0",
-    "typescript": "5.9.3",
-    "vitest": "4.0.15"
+    "build": "npm run build -w @rw/core && npm run build -w @rw/ingest",
+    "build:web": "npm run build -w @rw/web",
+    "typecheck": "npm run typecheck -w @rw/core && npm run typecheck -w @rw/ingest && npm run typecheck -w @rw/web",
+    "test": "npm run test -w @rw/core && npm run test -w @rw/ingest",
+    "dev:web": "npm run dev -w @rw/web",
+    "dev:mcp": "npm run dev:mcp -w @rw/core",
+    "dev:query": "npm run dev:query -w @rw/core",
+    "dev:import": "npm run dev:import -w @rw/core",
+    "import": "npm run import -w @rw/core",
+    "query": "npm run query -w @rw/core",
+    "doctor": "npm run doctor -w @rw/core",
+    "mcp": "npm run mcp -w @rw/core",
+    "mcpb:stage": "npm run build && node packages/core/dist/scripts/prepare-mcpb.js",
+    "mcpb:pack": "npm run mcpb:stage && npx -y @anthropic-ai/mcpb pack mcpb/build/retraction-watch-mcp"
   },
   "engines": {
     "node": ">=20"

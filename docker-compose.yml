@@ -1,0 +1,15 @@
+services:
+  rw-screen:
+    build: .
+    image: rw-screen:0.2.0
+    container_name: rw-screen
+    ports:
+      - "3210:3210"
+    volumes:
+      - ./data:/data
+      - ./config:/config
+    environment:
+      - RW_MCP_DB_PATH=/data/retraction-watch.sqlite
+      - RW_SCREEN_CONFIG_DIR=/config
+      - RW_SCREEN_DATA_DIR=/data/manuscripts
+    restart: unless-stopped

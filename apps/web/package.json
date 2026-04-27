@@ -1,0 +1,33 @@
+{
+  "name": "@rw/web",
+  "version": "0.2.0-dev",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3210",
+    "build": "next build",
+    "start": "next start -p 3210",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint --quiet"
+  },
+  "dependencies": {
+    "@rw/core": "0.2.0-dev",
+    "@rw/ingest": "0.2.0-dev",
+    "next": "15.1.6",
+    "papaparse": "5.5.1",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-dropzone": "14.3.5",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "25.0.0",
+    "@types/papaparse": "5.3.15",
+    "@types/react": "19.0.7",
+    "@types/react-dom": "19.0.3",
+    "autoprefixer": "10.4.21",
+    "postcss": "8.5.1",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.9.3"
+  }
+}
