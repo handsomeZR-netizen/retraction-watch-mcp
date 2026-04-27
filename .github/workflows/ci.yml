@@ -38,5 +38,5 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Pack dry run
-        run: npm pack --dry-run
+      - name: Pack dry run (core)
+        run: npm pack --dry-run -w @rw/core
