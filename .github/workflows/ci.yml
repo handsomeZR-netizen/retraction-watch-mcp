@@ -29,14 +29,14 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Typecheck
+      - name: Build core and ingest
+        run: npm run build
+
+      - name: Typecheck (all workspaces)
         run: npm run typecheck
 
       - name: Test
         run: npm test
-
-      - name: Build
-        run: npm run build
 
       - name: Pack dry run (core)
         run: npm pack --dry-run -w @rw/core
