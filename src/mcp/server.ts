@@ -4,11 +4,14 @@ import { z } from "zod";
 import { RetractionWatchRepository } from "../data/repository.js";
 import { screenPerson, scoreCandidate } from "../matching/matcher.js";
 import { jsonText, toPublicCandidate, toPublicRecord, toPublicScreenResult } from "../output.js";
+import { BALANCED_POLICY, policyMetadata, resolvePolicyForInput, type ScreeningPolicy } from "../policy.js";
+import { registerScreeningPrompts } from "./prompts.js";
 
 const noticeTypesSchema = z.array(z.string().min(1)).optional();
 
 export interface RunMcpServerOptions {
   dbPath?: string;
+  policy?: ScreeningPolicy;
 }
 
 const screenPersonSchema = {
@@ -19,21 +22,24 @@ const screenPersonSchema = {
   pmid: z.string().optional().describe("Optional original paper PMID or retraction notice PMID."),
   include_notice_types: noticeTypesSchema.describe("Optional RetractionNature filter."),
   limit: z.number().int().min(1).max(50).optional(),
+  strict_mode: z.boolean().optional().describe("Use strict mode for this call: only DOI/PMID exact matches become formal matches."),
 };
 
 export async function runMcpServer(options: RunMcpServerOptions = {}): Promise<void> {
   const repository = await RetractionWatchRepository.open(options.dbPath);
+  const activePolicy = options.policy ?? BALANCED_POLICY;
   const server = new McpServer({
     name: "retraction-watch-mcp",
     version: "0.1.0",
   });
+  registerScreeningPrompts(server);
 
   server.tool(
     "screen_person",
     "Screen one person against the local Retraction Watch index using conservative, explainable matching.",
     screenPersonSchema,
     async (input) => {
-      const result = await screenPerson(repository, input);
+      const result = await screenPerson(repository, input, activePolicy);
       return jsonContent(toPublicScreenResult(result));
     },
   );
@@ -55,7 +61,7 @@ export async function runMcpServer(options: RunMcpServerOptions = {}): Promise<v
               ...person,
               include_notice_types: person.include_notice_types ?? input.include_notice_types,
               limit: person.limit ?? input.limit_per_person,
-            }),
+            }, activePolicy),
           ),
         );
       }
@@ -103,7 +109,7 @@ export async function runMcpServer(options: RunMcpServerOptions = {}): Promise<v
       if (!record) {
         return jsonContent({ record_id, found: false });
       }
-      return jsonContent(toPublicCandidate(scoreCandidate(record, query)));
+      return jsonContent(toPublicCandidate(scoreCandidate(record, query, resolvePolicyForInput(query, activePolicy))));
     },
   );
 
@@ -111,7 +117,7 @@ export async function runMcpServer(options: RunMcpServerOptions = {}): Promise<v
     "get_source_versions",
     "Return local data source version and match policy metadata.",
     {},
-    async () => jsonContent(repository.getSourceSnapshot()),
+    async () => jsonContent({ sourceSnapshot: repository.getSourceSnapshot(), activePolicy: policyMetadata(activePolicy) }),
   );
 
   server.resource("source-version", "rw://source-version", async (uri) => ({
@@ -119,7 +125,7 @@ export async function runMcpServer(options: RunMcpServerOptions = {}): Promise<v
       {
         uri: uri.href,
         mimeType: "application/json",
-        text: jsonText(repository.getSourceSnapshot()),
+        text: jsonText({ sourceSnapshot: repository.getSourceSnapshot(), activePolicy: policyMetadata(activePolicy) }),
       },
     ],
   }));
@@ -129,14 +135,7 @@ export async function runMcpServer(options: RunMcpServerOptions = {}): Promise<v
       {
         uri: uri.href,
         mimeType: "application/json",
-        text: jsonText({
-          policy: "rw-person-screening-v1",
-          confirmed: "Only DOI/PMID exact matches are confirmed.",
-          likely_match: "Requires name evidence plus independent auxiliary institution or domain evidence.",
-          email: "Only email domain is used; public domains provide no positive evidence.",
-          warning:
-            "Retraction Watch records link publications and notices. They do not by themselves prove individual misconduct.",
-        }),
+        text: jsonText(policyMetadata(activePolicy)),
       },
     ],
   }));

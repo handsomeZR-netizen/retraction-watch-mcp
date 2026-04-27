@@ -23,13 +23,17 @@
   "main": "./dist/index.js",
   "files": [
     "dist/",
+    "docs/",
+    "mcpb/manifest.json",
+    "policies/",
     "README.md",
     "LICENSE"
   ],
   "bin": {
     "rw-mcp": "./dist/index.js",
     "rw-import": "./dist/cli/import.js",
-    "rw-query": "./dist/cli/query.js"
+    "rw-query": "./dist/cli/query.js",
+    "rw-doctor": "./dist/cli/doctor.js"
   },
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
@@ -37,8 +41,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check": "npm run typecheck && npm run test && npm run build && npm pack --dry-run",
     "prepack": "npm run build",
+    "mcpb:stage": "npm run build && node dist/scripts/prepare-mcpb.js",
+    "mcpb:pack": "npm run mcpb:stage && npx -y @anthropic-ai/mcpb pack mcpb/build/retraction-watch-mcp",
     "import": "node dist/cli/import.js",
     "query": "node dist/cli/query.js",
+    "doctor": "node dist/cli/doctor.js",
     "mcp": "node dist/index.js",
     "dev:import": "tsx src/cli/import.ts",
     "dev:query": "tsx src/cli/query.ts",

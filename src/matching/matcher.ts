@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { DEFAULT_LIMIT, MAX_LIMIT, POLICY_VERSION } from "../config.js";
+import { DEFAULT_LIMIT, MAX_LIMIT } from "../config.js";
 import { RetractionWatchRepository } from "../data/repository.js";
 import type {
   MatchCandidate,
@@ -9,6 +9,12 @@ import type {
   ScreenPersonInput,
   ScreenPersonResult,
 } from "../data/types.js";
+import {
+  BALANCED_POLICY,
+  CONSEQUENTIAL_USE_WARNING,
+  resolvePolicyForInput,
+  type ScreeningPolicy,
+} from "../policy.js";
 import {
   domainTokens,
   isPublicEmailDomain,
@@ -32,13 +38,15 @@ interface ScoreContext {
 export async function screenPerson(
   repository: RetractionWatchRepository,
   input: ScreenPersonInput,
+  basePolicy: ScreeningPolicy = BALANCED_POLICY,
 ): Promise<ScreenPersonResult> {
+  const policy = resolvePolicyForInput(input, basePolicy);
   const queryId = randomUUID();
   const limit = clampLimit(input.limit);
   const noticeTypes = normalizeNoticeTypes(input.include_notice_types);
   const candidateRecords = repository.findCandidateRecords(input, noticeTypes, limit);
   const scoredCandidates = candidateRecords
-    .map((record) => scoreCandidate(record, input))
+    .map((record) => scoreCandidate(record, input, policy))
     .filter((candidate) => candidate.score > 0)
     .sort((left, right) => right.score - left.score || left.record.recordId.localeCompare(right.record.recordId));
 
@@ -65,6 +73,8 @@ export async function screenPerson(
     verdict: best?.verdict ?? "no_match",
     identityConfirmed,
     reviewRequired: best?.reviewRequired ?? nearMisses.length > 0,
+    consequentialUseWarning: CONSEQUENTIAL_USE_WARNING,
+    safeSummary: buildSafeSummary(best, nearMisses.length),
     score: best?.score ?? 0,
     matchedFields: best?.matchedFields ?? [],
     evidence: best?.evidence ?? [],
@@ -74,11 +84,15 @@ export async function screenPerson(
     manualReviewReasonCodes,
     inputDiagnostics: buildInputDiagnostics(input, candidates, nearMisses),
     sourceVersion: repository.getSourceSnapshot(),
-    policyVersion: POLICY_VERSION,
+    policyVersion: policy.policyVersion,
   };
 }
 
-export function scoreCandidate(record: RwRecord, input: ScreenPersonInput): MatchCandidate {
+export function scoreCandidate(
+  record: RwRecord,
+  input: ScreenPersonInput,
+  policy: ScreeningPolicy = BALANCED_POLICY,
+): MatchCandidate {
   const context: ScoreContext = {
     evidence: [],
     matchedFields: new Set<string>(),
@@ -88,13 +102,13 @@ export function scoreCandidate(record: RwRecord, input: ScreenPersonInput): Matc
   };
 
   let score = 0;
-  score += scoreIdentifiers(record, input, context);
-  score += scoreName(record, input.name, context);
-  score += scoreInstitution(record, input.institution, context);
-  score += scoreEmailDomain(record, input.email, context);
+  score += scoreIdentifiers(record, input, context, policy);
+  score += scoreName(record, input.name, context, policy);
+  score += scoreInstitution(record, input.institution, context, policy);
+  score += scoreEmailDomain(record, input.email, context, policy);
 
   const finalScore = Math.max(0, Math.min(1, Number(score.toFixed(3))));
-  const verdict = classify(finalScore, context);
+  const verdict = classify(finalScore, context, policy);
 
   return {
     record,
@@ -106,7 +120,12 @@ export function scoreCandidate(record: RwRecord, input: ScreenPersonInput): Matc
   };
 }
 
-function scoreIdentifiers(record: RwRecord, input: ScreenPersonInput, context: ScoreContext): number {
+function scoreIdentifiers(
+  record: RwRecord,
+  input: ScreenPersonInput,
+  context: ScoreContext,
+  policy: ScreeningPolicy,
+): number {
   let score = 0;
   const queryDoi = normalizeDoi(input.doi);
   const queryPmid = normalizePmid(input.pmid);
@@ -119,7 +138,7 @@ function scoreIdentifiers(record: RwRecord, input: ScreenPersonInput, context: S
       field: "doi",
       strength: "strong",
       message: "DOI exactly matches the original paper DOI or retraction notice DOI.",
-      scoreDelta: 1,
+      scoreDelta: policy.weights.doiExact,
     });
     context.hasHardIdentifier = true;
     context.matchedFields.add("doi");
@@ -134,7 +153,7 @@ function scoreIdentifiers(record: RwRecord, input: ScreenPersonInput, context: S
       field: "pmid",
       strength: "strong",
       message: "PubMed ID exactly matches the original paper PMID or retraction notice PMID.",
-      scoreDelta: 1,
+      scoreDelta: policy.weights.pmidExact,
     });
     context.hasHardIdentifier = true;
     context.matchedFields.add("pmid");
@@ -143,7 +162,12 @@ function scoreIdentifiers(record: RwRecord, input: ScreenPersonInput, context: S
   return Math.min(score, 1);
 }
 
-function scoreName(record: RwRecord, name: string, context: ScoreContext): number {
+function scoreName(
+  record: RwRecord,
+  name: string,
+  context: ScoreContext,
+  policy: ScreeningPolicy,
+): number {
   const queryName = normalizeName(name);
   if (!queryName.normalized) {
     return 0;
@@ -158,7 +182,7 @@ function scoreName(record: RwRecord, name: string, context: ScoreContext): numbe
         field: "name",
         strength: "medium",
         message: `Author name exactly matches "${author.original}".`,
-        scoreDelta: 0.48,
+        scoreDelta: policy.weights.nameExact,
       });
     }
 
@@ -169,7 +193,7 @@ function scoreName(record: RwRecord, name: string, context: ScoreContext): numbe
         field: "name",
         strength: "medium",
         message: `Author name matches a normalized name-order variant of "${author.original}".`,
-        scoreDelta: 0.42,
+        scoreDelta: policy.weights.nameVariant,
       });
     }
 
@@ -180,7 +204,7 @@ function scoreName(record: RwRecord, name: string, context: ScoreContext): numbe
         field: "name",
         strength: "medium",
         message: `Author surname and initials match "${author.original}".`,
-        scoreDelta: 0.35,
+        scoreDelta: policy.weights.surnameInitials,
       });
     }
 
@@ -196,7 +220,7 @@ function scoreName(record: RwRecord, name: string, context: ScoreContext): numbe
         field: "name",
         strength: "weak",
         message: `Author surname and first initial match "${author.original}".`,
-        scoreDelta: 0.25,
+        scoreDelta: policy.weights.surnameFirstInitial,
       });
     }
   }
@@ -208,6 +232,7 @@ function scoreInstitution(
   record: RwRecord,
   institution: string | undefined,
   context: ScoreContext,
+  policy: ScreeningPolicy,
 ): number {
   if (!institution?.trim()) {
     return 0;
@@ -235,7 +260,7 @@ function scoreInstitution(
       field: "institution",
       strength: "medium",
       message: `Institution has high token overlap with "${bestInstitution}".`,
-      scoreDelta: 0.24,
+      scoreDelta: policy.weights.institutionHighOverlap,
     });
   }
 
@@ -246,7 +271,7 @@ function scoreInstitution(
       field: "institution",
       strength: "weak",
       message: `Institution partially overlaps with "${bestInstitution}".`,
-      scoreDelta: 0.14,
+      scoreDelta: policy.weights.institutionPartialOverlap,
     });
   }
 
@@ -255,14 +280,19 @@ function scoreInstitution(
       field: "institution",
       strength: "negative",
       message: "A name-like match was found, but the provided institution does not overlap with listed affiliations.",
-      scoreDelta: -0.2,
+      scoreDelta: policy.weights.institutionConflictPenalty,
     });
   }
 
   return 0;
 }
 
-function scoreEmailDomain(record: RwRecord, email: string | undefined, context: ScoreContext): number {
+function scoreEmailDomain(
+  record: RwRecord,
+  email: string | undefined,
+  context: ScoreContext,
+  policy: ScreeningPolicy,
+): number {
   const domain = normalizeEmailDomain(email);
   if (!domain) {
     if (email?.trim()) {
@@ -276,7 +306,7 @@ function scoreEmailDomain(record: RwRecord, email: string | undefined, context: 
     return 0;
   }
 
-  if (isPublicEmailDomain(domain)) {
+  if (isPublicEmailDomain(domain) && !policy.safety.publicEmailDomainPositiveEvidence) {
     addEvidence(context, {
       field: "email_domain",
       strength: "info",
@@ -299,7 +329,7 @@ function scoreEmailDomain(record: RwRecord, email: string | undefined, context: 
       field: "email_domain",
       strength: "weak",
       message: `Email domain "${domain}" overlaps with listed affiliation tokens.`,
-      scoreDelta: 0.1,
+      scoreDelta: policy.weights.emailDomainOverlap,
     });
   }
 
@@ -312,14 +342,21 @@ function scoreEmailDomain(record: RwRecord, email: string | undefined, context: 
   return 0;
 }
 
-function classify(score: number, context: ScoreContext): MatchVerdict {
+function classify(score: number, context: ScoreContext, policy: ScreeningPolicy): MatchVerdict {
   if (context.hasHardIdentifier) {
     return "confirmed";
   }
-  if (score >= 0.7 && context.hasNameEvidence && context.hasAuxiliaryEvidence) {
+  if (policy.safety.hardIdentifiersOnly) {
+    return "no_match";
+  }
+  if (
+    score >= policy.thresholds.likelyMatch &&
+    context.hasNameEvidence &&
+    (!policy.safety.requireAuxiliaryEvidenceForLikely || context.hasAuxiliaryEvidence)
+  ) {
     return "likely_match";
   }
-  if (score >= 0.35 && context.hasNameEvidence) {
+  if (score >= policy.thresholds.possibleMatch && context.hasNameEvidence) {
     return "possible_match";
   }
   return "no_match";
@@ -385,6 +422,22 @@ function buildWarnings(
   }
 
   return warnings;
+}
+
+function buildSafeSummary(best: MatchCandidate | null, nearMissCount: number): string {
+  if (best?.verdict === "confirmed") {
+    return "A DOI/PMID exact Retraction Watch record match was found. This is a record/publication match, not a finding of personal misconduct.";
+  }
+  if (best?.verdict === "likely_match") {
+    return "A likely record-level similarity was found based on name plus auxiliary evidence. This is not an identity confirmation and requires manual review.";
+  }
+  if (best?.verdict === "possible_match") {
+    return "A possible record-level similarity was found from name evidence. This is not an identity confirmation and requires manual review.";
+  }
+  if (nearMissCount > 0) {
+    return "No formal match was returned, but weak or conflicting near-miss records should be manually reviewed if the use case is sensitive.";
+  }
+  return "No matching Retraction Watch record was found in the local index for the supplied inputs. Absence of a match is not proof that no record exists.";
 }
 
 function buildManualReviewReasonCodes(

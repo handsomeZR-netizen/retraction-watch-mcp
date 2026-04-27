@@ -5,6 +5,8 @@
 [![Node.js >=20](https://img.shields.io/badge/Node.js-%3E%3D20-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![MCP](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
+[![MCPB](https://img.shields.io/badge/MCPB-ready-0f766e)](./mcpb/manifest.json)
+[![Local First](https://img.shields.io/badge/local--first-privacy-111827)](#隐私与安全)
 [![Version](https://img.shields.io/badge/version-0.1.0-blue)](./package.json)
 
 一个本地运行的 Model Context Protocol (MCP) server，用于基于 Crossref 分发的公开 Retraction Watch 数据集做保守、可解释的学术诚信记录筛查。
@@ -18,16 +20,18 @@
 - MCP 传输：`stdio`
 - 支持平台：Windows、macOS、Linux
 - 数据存储：由 `rw-import` 在本地生成 SQLite
-- 默认发行方式：GitHub clone 后本地构建运行
+- 默认发行方式：GitHub clone 后本地构建运行；已提供 MCPB manifest 和 staging 脚本
 
 ## 能做什么
 
 - 下载 Crossref/GitLab 上的 Retraction Watch CSV，并构建本地 SQLite 索引。
 - 提供 MCP tools：单人筛查、批量筛查、DOI 查询、记录查询、匹配解释、数据版本查询。
-- 使用保守、可解释的匹配策略。
+- 使用保守、可解释、可配置的匹配策略，内置 `balanced` 与 `strict` 两种模式。
 - 支持输入 `name`、`email`、`institution`、`doi`、`pmid`。
 - 默认返回全部 `RetractionNature` 类型，并在结果里明确标注。
 - 将正式候选 `candidates` 和弱/冲突证据 `nearMisses` 分开。
+- 返回 `safeSummary` 和 `consequentialUseWarning`，帮助 MCP 客户端保持谨慎措辞。
+- 提供 MCP prompts，把筛查、复核摘要、批量复核和限制说明包装成工作流。
 - 每次筛查都会提示 Retraction Watch 原始数据没有作者到机构的一一映射。
 
 ## 不能做什么
@@ -86,6 +90,12 @@ npm run mcp
 
 ```bash
 npm run mcp -- --db-path ./data/retraction-watch.sqlite
+```
+
+使用严格策略：
+
+```bash
+npm run mcp -- --policy strict
 ```
 
 也可以用环境变量配置：
@@ -154,12 +164,26 @@ npm run query -- --name "Ahsen Maqsoom" --institution "COMSATS University Islama
 npm run query -- --db-path ./data/retraction-watch.sqlite --name "Ahsen Maqsoom" --institution "COMSATS University Islamabad"
 ```
 
+严格模式只把 DOI/PMID 精确命中作为正式匹配；姓名/机构相似项会降级到 `nearMisses`：
+
+```bash
+npm run query -- --strict --name "Ahsen Maqsoom" --institution "COMSATS University Islamabad"
+```
+
+安装诊断：
+
+```bash
+npm run doctor
+npm run doctor -- --json
+```
+
 本地 link 后可使用全局风格命令：
 
 ```bash
 npm link
 rw-import
 rw-query --name "Ahsen Maqsoom" --institution "COMSATS University Islamabad"
+rw-doctor
 rw-mcp
 ```
 
@@ -168,8 +192,22 @@ rw-mcp
 ```bash
 rw-import --help
 rw-query --help
+rw-doctor --help
 rw-mcp --help
 ```
+
+## 匹配策略
+
+默认策略是 `balanced`，配置文件见 [policies/balanced.json](./policies/balanced.json)。严格策略见 [policies/strict.json](./policies/strict.json)。
+
+```bash
+rw-query --policy balanced --name "..."
+rw-query --policy strict --name "..."
+rw-query --policy ./policies/strict.json --name "..."
+rw-mcp --policy ./policies/balanced.json
+```
+
+策略中可以调整阈值、权重和安全开关。高风险场景建议使用 `strict`，并把所有非 DOI/PMID 命中作为人工复核线索。
 
 ## MCP Tools
 
@@ -188,6 +226,15 @@ rw-mcp --help
 - `rw://match-policy/current`
 - `rw://record/{record_id}`
 
+## MCP Prompts
+
+| Prompt | 作用 |
+| --- | --- |
+| `screen-author` | 生成谨慎的单人筛查工作流 |
+| `review-match-result` | 将筛查 JSON 转成非定罪式人工复核摘要 |
+| `batch-integrity-check` | 生成批量科研诚信初筛工作流 |
+| `explain-limitations` | 解释本工具能做什么、不能证明什么 |
+
 ## 结果字段解释
 
 筛查结果的关键字段：
@@ -197,11 +244,31 @@ rw-mcp --help
 | `verdict` | `confirmed`、`likely_match`、`possible_match` 或 `no_match` |
 | `identityConfirmed` | 只有 DOI/PMID 精确命中时才为 `true` |
 | `reviewRequired` | 是否需要人工复核 |
+| `safeSummary` | 面向 LLM 或报告生成器的谨慎摘要 |
+| `consequentialUseWarning` | 高风险使用警告 |
 | `candidates` | 正式候选结果 |
 | `nearMisses` | 被拒绝但有弱证据或冲突证据的记录 |
 | `warnings` | 数据源和身份匹配限制 |
 | `manualReviewReasonCodes` | 机器可读的复核原因 |
 | `inputDiagnostics` | 邮箱域名处理、作者机构映射能力等诊断信息 |
+
+更详细的解释见 [docs/result-interpretation.md](./docs/result-interpretation.md)。典型场景见 [docs/use-cases.md](./docs/use-cases.md)，验收标准见 [docs/acceptance-criteria.md](./docs/acceptance-criteria.md)。
+
+## MCPB 打包
+
+仓库提供 MCPB manifest：[mcpb/manifest.json](./mcpb/manifest.json)。生成 staging 目录：
+
+```bash
+npm run mcpb:stage
+```
+
+打包 `.mcpb`：
+
+```bash
+npm run mcpb:pack
+```
+
+MCPB 包不会内置 Retraction Watch SQLite 数据库。安装后需要把 `db_path` 指向本机由 `rw-import` 生成的数据库。
 
 ## 数据源与许可
 
@@ -230,6 +297,7 @@ npm ci
 npm run typecheck
 npm test
 npm run build
+npm run doctor
 npm pack --dry-run
 ```
 
@@ -244,6 +312,7 @@ npm run dev:mcp
 ## 排障
 
 - `Local Retraction Watch database not found`：先运行 `npm run import`，或设置 `RW_MCP_DB_PATH` 指向已有数据库。
+- 不确定安装是否正确：先运行 `npm run doctor`，查看 Node、数据库、source snapshot 和 policy 状态。
 - MCP 客户端能启动但 tools 失败：确认已运行 `npm run build`，并且客户端配置指向 `dist/index.js`。
 - 导入很慢：CSV 和生成后的 SQLite 都比较大，这是预期行为。
 - 结果看起来不确定：查看 `warnings`、`manualReviewReasonCodes`、`nearMisses`，必要时用 `explain_match` 单独解释某条记录。
@@ -251,7 +320,7 @@ npm run dev:mcp
 ## 路线图
 
 - npm 发布与 `npx` 直接运行。
-- MCPB 桌面扩展包。
+- MCPB 图标、截图和安装体验完善。
 - Docker/OCI 镜像。
 - 可选 Crossref DOI 元数据增强。
 - 更完整的机构别名和 ROR 增强。

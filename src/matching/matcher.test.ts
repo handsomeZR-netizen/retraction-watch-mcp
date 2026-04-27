@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RwRecord, ScreenPersonInput } from "../data/types.js";
+import { CONSEQUENTIAL_USE_WARNING, STRICT_POLICY } from "../policy.js";
 import { screenPerson, scoreCandidate } from "./matcher.js";
 
 const baseRecord: RwRecord = {
@@ -96,5 +97,40 @@ describe("matcher", () => {
     expect(result.nearMisses).toHaveLength(1);
     expect(result.reviewRequired).toBe(true);
     expect(result.manualReviewReasonCodes).toContain("NEAR_MISSES_PRESENT");
+  });
+
+  it("includes cautious summary fields for downstream LLM use", async () => {
+    const repository = {
+      findCandidateRecords: () => [baseRecord],
+      getSourceSnapshot: () => null,
+    };
+
+    const result = await screenPerson(repository as never, {
+      name: "Ahsen Maqsoom",
+    });
+
+    expect(result.consequentialUseWarning).toBe(CONSEQUENTIAL_USE_WARNING);
+    expect(result.safeSummary).toContain("not an identity confirmation");
+  });
+
+  it("strict policy demotes non-identifier matches to near misses", async () => {
+    const repository = {
+      findCandidateRecords: () => [baseRecord],
+      getSourceSnapshot: () => null,
+    };
+
+    const result = await screenPerson(
+      repository as never,
+      {
+        name: "Ahsen Maqsoom",
+        institution: "COMSATS University Islamabad",
+      },
+      STRICT_POLICY,
+    );
+
+    expect(result.verdict).toBe("no_match");
+    expect(result.candidates).toHaveLength(0);
+    expect(result.nearMisses).toHaveLength(1);
+    expect(result.policyVersion).toBe(STRICT_POLICY.policyVersion);
   });
 });

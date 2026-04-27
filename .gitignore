@@ -1,6 +1,8 @@
 node_modules/
 dist/
 /data/
+/mcpb/build/
+*.mcpb
 .env
 *.log
 *.tgz

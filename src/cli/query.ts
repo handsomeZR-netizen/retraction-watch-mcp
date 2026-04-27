@@ -2,6 +2,7 @@
 import { RetractionWatchRepository } from "../data/repository.js";
 import { screenPerson } from "../matching/matcher.js";
 import { toPublicScreenResult } from "../output.js";
+import { loadPolicy } from "../policy.js";
 import { getArg, hasFlag, parseArgs, parseCommaList } from "./args.js";
 
 const args = parseArgs(process.argv.slice(2));
@@ -18,6 +19,7 @@ if (!getArg(args, "name")) {
 
 const repository = await RetractionWatchRepository.open(getArg(args, "db-path"));
 try {
+  const policy = await loadPolicy(getArg(args, "policy"), hasFlag(args, "strict"));
   const result = await screenPerson(repository, {
     name: getArg(args, "name") ?? "",
     email: getArg(args, "email"),
@@ -26,7 +28,8 @@ try {
     pmid: getArg(args, "pmid"),
     include_notice_types: parseCommaList(getArg(args, "include-notice-types")),
     limit: getArg(args, "limit") ? Number(getArg(args, "limit")) : undefined,
-  });
+    strict_mode: hasFlag(args, "strict"),
+  }, policy);
 
   console.log(JSON.stringify(toPublicScreenResult(result), null, 2));
 } finally {
@@ -47,6 +50,8 @@ Options:
   --include-notice-types <csv>          Comma-separated RetractionNature filter.
   --limit <number>                      Maximum candidates to return.
   --db-path <path>                      SQLite database path.
+  --policy <value>                      Policy name (balanced, strict) or path to a policy JSON file.
+  --strict                              Shortcut for --policy strict.
   --help                                Show this help message.
 `);
 }

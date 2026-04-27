@@ -73,6 +73,7 @@ export interface ScreenPersonInput {
   pmid?: string;
   include_notice_types?: string[];
   limit?: number;
+  strict_mode?: boolean;
 }
 
 export type MatchVerdict =
@@ -111,6 +112,8 @@ export interface ScreenPersonResult {
   verdict: MatchVerdict;
   identityConfirmed: boolean;
   reviewRequired: boolean;
+  consequentialUseWarning: string;
+  safeSummary: string;
   score: number;
   matchedFields: string[];
   evidence: MatchEvidence[];

@@ -10,7 +10,7 @@ export const RW_README_URL =
 export const RW_COMMIT_API_URL =
   "https://gitlab.com/api/v4/projects/61336882/repository/commits/main";
 
-export const POLICY_VERSION = "rw-person-screening-v1";
+export const POLICY_VERSION = "rw-person-screening-v2";
 
 export const DEFAULT_NOTICE_TYPES = [
   "Retraction",

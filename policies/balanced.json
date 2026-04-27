@@ -1,0 +1,27 @@
+{
+  "policyVersion": "rw-person-screening-v2",
+  "mode": "balanced",
+  "thresholds": {
+    "likelyMatch": 0.7,
+    "possibleMatch": 0.35
+  },
+  "weights": {
+    "doiExact": 1,
+    "pmidExact": 1,
+    "nameExact": 0.48,
+    "nameVariant": 0.42,
+    "surnameInitials": 0.35,
+    "surnameFirstInitial": 0.25,
+    "institutionHighOverlap": 0.24,
+    "institutionPartialOverlap": 0.14,
+    "emailDomainOverlap": 0.1,
+    "institutionConflictPenalty": -0.2
+  },
+  "safety": {
+    "confirmOnlyByHardIdentifier": true,
+    "requireAuxiliaryEvidenceForLikely": true,
+    "requireManualReviewForNonConfirmed": true,
+    "publicEmailDomainPositiveEvidence": false,
+    "hardIdentifiersOnly": false
+  }
+}
