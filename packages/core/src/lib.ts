@@ -1,6 +1,7 @@
 export { RetractionWatchRepository } from "./data/repository.js";
 export { screenPerson, scoreCandidate } from "./matching/matcher.js";
 export { screenReference } from "./matching/reference-matcher.js";
+export { screenAuthor } from "./matching/author-history.js";
 export {
   normalizeText,
   normalizeName,
@@ -63,4 +64,5 @@ export type {
   ManuscriptReference,
   ManuscriptScreenResult,
   ScreenedReference,
+  AuthorScreenResult,
 } from "./data/types.js";

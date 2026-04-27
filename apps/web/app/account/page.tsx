@@ -4,8 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowsClockwise,
+  ChartBar,
+  CheckCircle,
+  DownloadSimple,
+  Files,
   FloppyDisk,
   Key,
+  ShieldWarning,
+  TrendUp,
   User,
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
@@ -271,6 +277,104 @@ export default function AccountPage() {
           </div>
         </CardContent>
       </Card>
+
+      <MyScreeningStats />
+    </div>
+  );
+}
+
+interface MyStats {
+  total: number;
+  pass: number;
+  review: number;
+  fail: number;
+  last30d: number;
+}
+
+function MyScreeningStats() {
+  const [stats, setStats] = useState<MyStats | null>(null);
+  useEffect(() => {
+    void fetch("/api/account/screening-logs/stats")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => s && setStats(s as MyStats))
+      .catch(() => {});
+  }, []);
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-end justify-between gap-4 flex-wrap">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <ChartBar className="h-5 w-5" weight="duotone" />
+              我的解析统计
+            </CardTitle>
+            <CardDescription>
+              你账户名下所有稿件的解析摘要可一键导出，方便离线分析。
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <a href="/api/account/screening-logs/export?format=json" download>
+                <DownloadSimple className="h-3.5 w-3.5" weight="bold" />
+                导出 JSON
+              </a>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <a href="/api/account/screening-logs/export?format=csv" download>
+                <DownloadSimple className="h-3.5 w-3.5" weight="bold" />
+                CSV
+              </a>
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {!stats ? (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-16" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <Mini icon={Files} value={stats.total} label="累计稿件" />
+            <Mini icon={CheckCircle} value={stats.pass} label="PASS" cls="text-success" />
+            <Mini
+              icon={ShieldWarning}
+              value={stats.fail + stats.review}
+              label="命中 / 复核"
+              cls={stats.fail + stats.review > 0 ? "text-warning" : ""}
+            />
+            <Mini icon={TrendUp} value={stats.last30d} label="近 30 天" />
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Mini({
+  icon: Icon,
+  value,
+  label,
+  cls,
+}: {
+  icon: typeof ChartBar;
+  value: number;
+  label: string;
+  cls?: string;
+}) {
+  return (
+    <div className="rounded-md border border-border/60 px-3 py-2.5 flex items-center gap-3">
+      <Icon className={"h-5 w-5 " + (cls ?? "text-foreground")} weight="duotone" />
+      <div>
+        <div className={"text-xl font-semibold tabular-nums leading-tight " + (cls ?? "")}>
+          {value}
+        </div>
+        <div className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
+          {label}
+        </div>
+      </div>
     </div>
   );
 }

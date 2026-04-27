@@ -94,9 +94,29 @@ export default function HomePage() {
           body: formData,
         });
         if (!uploadRes.ok) throw new Error(await uploadRes.text());
-        const { manuscriptId } = (await uploadRes.json()) as {
+        const uploadJson = (await uploadRes.json()) as {
           manuscriptId: string;
+          deduped?: boolean;
         };
+        const { manuscriptId } = uploadJson;
+
+        if (uploadJson.deduped) {
+          setEvents((prev) => [
+            ...prev,
+            {
+              stage: "done",
+              message: "已识别为重复上传，复用历史报告",
+              detail: { deduped: true },
+            },
+          ]);
+          setTransitioning(true);
+          router.prefetch(`/result/${encodeURIComponent(manuscriptId)}`);
+          setTimeout(
+            () => router.push(`/result/${encodeURIComponent(manuscriptId)}`),
+            500,
+          );
+          return;
+        }
 
         const sse = new EventSource(
           `/api/parse?manuscriptId=${encodeURIComponent(manuscriptId)}`,

@@ -1,7 +1,8 @@
+import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import type { FileType, ManuscriptScreenResult } from "@rw/core";
@@ -14,6 +15,7 @@ export interface UploadRecord {
   bytes: number;
   uploadedAt: string;
   filePath: string;
+  sha256: string | null;
 }
 
 export async function ensureDataDir(): Promise<string> {
@@ -36,15 +38,28 @@ export async function saveUpload(input: {
   await fs.mkdir(dir, { recursive: true });
   const filePath = path.join(dir, input.fileName);
 
+  const hash = createHash("sha256");
   let bytes = 0;
   if (Buffer.isBuffer(input.body)) {
+    hash.update(input.body);
     await fs.writeFile(filePath, input.body);
     bytes = input.body.byteLength;
   } else {
     const out = createWriteStream(filePath);
-    await pipeline(Readable.fromWeb(input.body as unknown as NodeReadableStream<Uint8Array>), out);
+    const tee = new Transform({
+      transform(chunk, _enc, cb) {
+        hash.update(chunk);
+        cb(null, chunk);
+      },
+    });
+    await pipeline(
+      Readable.fromWeb(input.body as unknown as NodeReadableStream<Uint8Array>),
+      tee,
+      out,
+    );
     bytes = (await fs.stat(filePath)).size;
   }
+  const sha256 = hash.digest("hex");
 
   const record: UploadRecord = {
     manuscriptId: input.manuscriptId,
@@ -53,6 +68,7 @@ export async function saveUpload(input: {
     bytes,
     uploadedAt: new Date().toISOString(),
     filePath,
+    sha256,
   };
   await fs.writeFile(path.join(dir, "upload.json"), JSON.stringify(record, null, 2));
   return record;

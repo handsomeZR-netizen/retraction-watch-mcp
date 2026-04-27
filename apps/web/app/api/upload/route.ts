@@ -4,7 +4,10 @@ import { inferFileType } from "@rw/core";
 import { requireUser } from "@/lib/auth/guard";
 import { activeScope } from "@/lib/auth/scope";
 import { writeAudit } from "@/lib/db/audit";
-import { insertManuscript } from "@/lib/db/manuscripts";
+import {
+  findDoneManuscriptBySha256,
+  insertManuscript,
+} from "@/lib/db/manuscripts";
 import { getRequestIp } from "@/lib/auth/validate";
 import { saveUpload } from "@/lib/store";
 
@@ -40,6 +43,31 @@ export async function POST(req: Request) {
     body: file.stream(),
   });
   const scope = activeScope(user);
+
+  if (record.sha256) {
+    const existing = findDoneManuscriptBySha256(scope, record.sha256);
+    if (existing) {
+      writeAudit({
+        userId: user.id,
+        action: "upload",
+        detail: {
+          manuscriptId: existing.id,
+          deduped: true,
+          fileName: safeName,
+          sha256: record.sha256,
+          workspaceId: scope.workspaceId,
+        },
+        ip: getRequestIp(req.headers),
+        userAgent: req.headers.get("user-agent"),
+      });
+      return NextResponse.json({
+        ...record,
+        manuscriptId: existing.id,
+        deduped: true,
+      });
+    }
+  }
+
   insertManuscript({
     id: manuscriptId,
     userId: user.id,
@@ -47,6 +75,7 @@ export async function POST(req: Request) {
     fileName: safeName,
     fileType,
     bytes: record.bytes,
+    sha256: record.sha256,
   });
   writeAudit({
     userId: user.id,
@@ -56,6 +85,7 @@ export async function POST(req: Request) {
       fileName: safeName,
       fileType,
       bytes: record.bytes,
+      sha256: record.sha256,
       workspaceId: scope.workspaceId,
     },
     ip: getRequestIp(req.headers),

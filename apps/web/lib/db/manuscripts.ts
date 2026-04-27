@@ -7,6 +7,7 @@ export interface ManuscriptRow {
   file_name: string;
   file_type: string;
   bytes: number;
+  sha256: string | null;
   uploaded_at: string;
   status: "parsing" | "done" | "error";
   verdict: "PASS" | "REVIEW" | "FAIL" | null;
@@ -25,11 +26,12 @@ export function insertManuscript(row: {
   fileName: string;
   fileType: string;
   bytes: number;
+  sha256?: string | null;
 }): void {
   getAppDb()
     .prepare(
-      `INSERT INTO manuscripts (id, user_id, workspace_id, file_name, file_type, bytes, uploaded_at, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'parsing')`,
+      `INSERT INTO manuscripts (id, user_id, workspace_id, file_name, file_type, bytes, sha256, uploaded_at, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'parsing')`,
     )
     .run(
       row.id,
@@ -38,8 +40,27 @@ export function insertManuscript(row: {
       row.fileName,
       row.fileType,
       row.bytes,
+      row.sha256 ?? null,
       new Date().toISOString(),
     );
+}
+
+export function findDoneManuscriptBySha256(
+  scope: { userId: string; workspaceId: string | null },
+  sha256: string,
+): ManuscriptRow | null {
+  const where = scope.workspaceId
+    ? "workspace_id = ?"
+    : "user_id = ? AND workspace_id IS NULL";
+  const param = scope.workspaceId ?? scope.userId;
+  const row = getAppDb()
+    .prepare(
+      `SELECT * FROM manuscripts
+       WHERE sha256 = ? AND status = 'done' AND ${where}
+       ORDER BY uploaded_at DESC LIMIT 1`,
+    )
+    .get(sha256, param) as ManuscriptRow | undefined;
+  return row ?? null;
 }
 
 export function markManuscriptDone(input: {

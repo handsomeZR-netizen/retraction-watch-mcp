@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  ChartBar,
   ClockCounterClockwise,
   Database,
   Gear,
@@ -54,6 +55,13 @@ export function QuickActions({ role }: { role: "admin" | "user" }) {
       icon: ShieldCheck,
       label: "管理后台",
       desc: "用户与审计日志",
+      accent: "warning",
+    });
+    actions.push({
+      href: "/admin/analytics",
+      icon: ChartBar,
+      label: "解析分析",
+      desc: "全局日志与导出",
       accent: "warning",
     });
     actions.push({

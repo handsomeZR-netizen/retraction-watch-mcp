@@ -13,6 +13,7 @@ import {
   markManuscriptDone,
   markManuscriptError,
 } from "@/lib/db/manuscripts";
+import { writeScreeningLog } from "@/lib/db/screening-logs";
 import { findUserById, getUserLlmSettings } from "@/lib/db/users";
 import { canAccessManuscript } from "@/lib/auth/scope";
 
@@ -92,6 +93,19 @@ export async function GET(req: Request) {
         resultPath,
         generatedAt: result.generatedAt,
       });
+
+      try {
+        writeScreeningLog({
+          result,
+          userId: user.id,
+          workspaceId: row.workspace_id,
+          bytes: row.bytes,
+          sha256: row.sha256,
+        });
+      } catch (logErr) {
+        // eslint-disable-next-line no-console
+        console.warn("[screening-logs] failed to persist:", logErr);
+      }
 
       sink.write({
         stage: "done",

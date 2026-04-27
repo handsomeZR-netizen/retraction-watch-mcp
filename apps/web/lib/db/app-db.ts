@@ -23,6 +23,7 @@ function migrate(db: DB): void {
   if (current < 1) applyV1(db);
   if (current < 2) applyV2(db);
   if (current < 3) applyV3(db);
+  if (current < 4) applyV4(db);
 }
 
 function applyV1(db: DB): void {
@@ -155,5 +156,48 @@ function applyV3(db: DB): void {
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
     PRAGMA user_version = 3;
+  `);
+}
+
+function applyV4(db: DB): void {
+  const manuscriptCols = (db.prepare("PRAGMA table_info(manuscripts)").all() as { name: string }[]).map(
+    (r) => r.name,
+  );
+  if (!manuscriptCols.includes("sha256")) db.exec("ALTER TABLE manuscripts ADD COLUMN sha256 TEXT");
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS screening_logs (
+      id                TEXT PRIMARY KEY,
+      user_id           TEXT REFERENCES users(id) ON DELETE SET NULL,
+      workspace_id      TEXT,
+      scope             TEXT NOT NULL,
+      file_name         TEXT NOT NULL,
+      file_type         TEXT NOT NULL,
+      bytes             INTEGER NOT NULL,
+      sha256            TEXT,
+      title             TEXT,
+      authors_json      TEXT NOT NULL,
+      affiliations_json TEXT,
+      emails_json       TEXT,
+      verdict           TEXT NOT NULL,
+      refs_total        INTEGER NOT NULL DEFAULT 0,
+      refs_confirmed    INTEGER NOT NULL DEFAULT 0,
+      refs_likely       INTEGER NOT NULL DEFAULT 0,
+      refs_possible     INTEGER NOT NULL DEFAULT 0,
+      authors_confirmed INTEGER NOT NULL DEFAULT 0,
+      authors_likely    INTEGER NOT NULL DEFAULT 0,
+      authors_possible  INTEGER NOT NULL DEFAULT 0,
+      hit_summary_json  TEXT,
+      llm_calls         INTEGER NOT NULL DEFAULT 0,
+      policy_version    TEXT,
+      created_at        TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_screening_logs_user_time ON screening_logs(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_screening_logs_verdict ON screening_logs(verdict, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_screening_logs_workspace ON screening_logs(workspace_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_screening_logs_sha256 ON screening_logs(sha256);
+    CREATE INDEX IF NOT EXISTS idx_manuscripts_sha256 ON manuscripts(sha256);
+
+    PRAGMA user_version = 4;
   `);
 }

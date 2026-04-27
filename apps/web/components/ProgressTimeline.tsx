@@ -11,6 +11,7 @@ import {
   CheckCircle,
   CircleNotch,
   ListChecks,
+  Detective,
   type Icon as PIcon,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ export type Stage =
   | "uploaded"
   | "text_extracted"
   | "metadata_extracted"
+  | "authors_screened"
   | "refs_segmented"
   | "refs_structured"
   | "screening"
@@ -29,6 +31,7 @@ const STAGE_ORDER: Stage[] = [
   "uploaded",
   "text_extracted",
   "metadata_extracted",
+  "authors_screened",
   "refs_segmented",
   "refs_structured",
   "screening",
@@ -39,6 +42,7 @@ const STAGE_META: Record<Stage, { label: string; icon: PIcon }> = {
   uploaded: { label: "已上传", icon: CloudArrowUp },
   text_extracted: { label: "文本提取", icon: FileText },
   metadata_extracted: { label: "元数据识别", icon: Hash },
+  authors_screened: { label: "作者撤稿史比对", icon: Detective },
   refs_segmented: { label: "参考文献切分", icon: MagnifyingGlass },
   refs_structured: { label: "结构化抽取", icon: Sparkle },
   screening: { label: "比对撤稿库", icon: ListChecks },

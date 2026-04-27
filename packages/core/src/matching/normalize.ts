@@ -112,6 +112,7 @@ export type IngestStage =
   | "uploaded"
   | "text_extracted"
   | "metadata_extracted"
+  | "authors_screened"
   | "refs_segmented"
   | "refs_structured"
   | "screening"

@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import {
   BALANCED_POLICY,
+  screenAuthor,
   screenReference,
+  type AuthorScreenResult,
   type FileType,
   type ManuscriptScreenResult,
   type ManuscriptVerdict,
@@ -93,6 +95,23 @@ export async function screenManuscript(
     detail: { metadata },
   });
 
+  const screenedAuthors: AuthorScreenResult[] =
+    metadata.authors.length === 0
+      ? []
+      : await Promise.all(
+          metadata.authors.map((author) =>
+            screenAuthor(repository, author, { policy }),
+          ),
+        );
+  const authorHits = screenedAuthors.filter(
+    (a) => a.verdict === "confirmed" || a.verdict === "likely_match" || a.verdict === "possible_match",
+  );
+  progress({
+    stage: "authors_screened",
+    message: `作者撤稿史比对：${screenedAuthors.length} 位${authorHits.length > 0 ? `，命中 ${authorHits.length}` : ""}`,
+    detail: { count: screenedAuthors.length, hits: authorHits.length },
+  });
+
   const rawRefs: RawReference[] =
     bibReferences.length > 0
       ? []
@@ -150,7 +169,7 @@ export async function screenManuscript(
     }
   }
 
-  const totals = countTotals(screened);
+  const totals = countTotals(screened, screenedAuthors);
   const verdict = decideVerdict(totals);
 
   const result: ManuscriptScreenResult = {
@@ -171,6 +190,7 @@ export async function screenManuscript(
       },
       result: s.result,
     })),
+    screenedAuthors,
     verdict,
     totals,
     warnings: extracted.warnings,
@@ -207,8 +227,20 @@ function mergeHeader(
   };
 }
 
-function countTotals(items: { result: ScreenReferenceResult }[]) {
-  const totals = { references: items.length, confirmed: 0, likely: 0, possible: 0, clean: 0 };
+function countTotals(
+  items: { result: ScreenReferenceResult }[],
+  authors: AuthorScreenResult[],
+) {
+  const totals = {
+    references: items.length,
+    confirmed: 0,
+    likely: 0,
+    possible: 0,
+    clean: 0,
+    authorsConfirmed: 0,
+    authorsLikely: 0,
+    authorsPossible: 0,
+  };
   for (const item of items) {
     switch (item.result.verdict) {
       case "confirmed":
@@ -224,11 +256,32 @@ function countTotals(items: { result: ScreenReferenceResult }[]) {
         totals.clean += 1;
     }
   }
+  for (const a of authors) {
+    switch (a.verdict) {
+      case "confirmed":
+        totals.authorsConfirmed += 1;
+        break;
+      case "likely_match":
+        totals.authorsLikely += 1;
+        break;
+      case "possible_match":
+        totals.authorsPossible += 1;
+        break;
+      default:
+        break;
+    }
+  }
   return totals;
 }
 
 function decideVerdict(totals: ReturnType<typeof countTotals>): ManuscriptVerdict {
-  if (totals.confirmed > 0) return "FAIL";
-  if (totals.likely > 0 || totals.possible > 0) return "REVIEW";
+  if (totals.confirmed > 0 || totals.authorsConfirmed > 0) return "FAIL";
+  if (
+    totals.likely > 0 ||
+    totals.possible > 0 ||
+    totals.authorsLikely > 0 ||
+    totals.authorsPossible > 0
+  )
+    return "REVIEW";
   return "PASS";
 }

@@ -194,12 +194,22 @@ export interface ScreenedReference {
   result: ScreenReferenceResult;
 }
 
+export interface AuthorScreenResult {
+  author: ManuscriptAuthor;
+  verdict: MatchVerdict;
+  score: number;
+  matchedRecord: RwRecord | null;
+  evidence: MatchEvidence[];
+  matchedFields: string[];
+}
+
 export interface ManuscriptScreenResult {
   manuscriptId: string;
   fileName: string;
   fileType: "pdf" | "docx" | "latex" | "unknown";
   metadata: ManuscriptMetadata;
   screenedReferences: ScreenedReference[];
+  screenedAuthors: AuthorScreenResult[];
   verdict: "PASS" | "REVIEW" | "FAIL";
   totals: {
     references: number;
@@ -207,6 +217,9 @@ export interface ManuscriptScreenResult {
     likely: number;
     possible: number;
     clean: number;
+    authorsConfirmed: number;
+    authorsLikely: number;
+    authorsPossible: number;
   };
   warnings: string[];
   network: {

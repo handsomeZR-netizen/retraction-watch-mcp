@@ -13,6 +13,7 @@ import {
 } from "@phosphor-icons/react/dist/ssr";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { AuthorScreenBadge } from "@/components/AuthorScreenBadge";
 import { ReferenceTable } from "@/components/ReferenceTable";
 import { ResultLayout } from "@/components/ResultLayout";
 import { VerdictCard } from "@/components/VerdictCard";
@@ -101,17 +102,33 @@ export default async function ResultPage({
               {result.metadata.authors.map((author, i) => {
                 const initial =
                   author.name?.trim()?.charAt(0).toUpperCase() ?? "?";
+                const screen = result.screenedAuthors?.[i];
+                const isHit =
+                  screen &&
+                  (screen.verdict === "confirmed" ||
+                    screen.verdict === "likely_match" ||
+                    screen.verdict === "possible_match");
                 return (
                   <div
                     key={i}
-                    className="flex items-start gap-3 px-3 py-2.5 rounded-md border border-border/60 bg-card"
+                    className={
+                      "flex items-start gap-3 px-3 py-2.5 rounded-md border bg-card " +
+                      (screen?.verdict === "confirmed"
+                        ? "border-destructive/40 bg-destructive/[0.03]"
+                        : isHit
+                          ? "border-warning/40 bg-warning/[0.03]"
+                          : "border-border/60")
+                    }
                   >
                     <span className="grid h-9 w-9 place-items-center rounded-full bg-muted text-foreground text-sm font-semibold shrink-0">
                       {initial}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium truncate">
-                        {author.name}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium truncate">
+                          {author.name}
+                        </span>
+                        {screen && <AuthorScreenBadge result={screen} />}
                       </div>
                       {author.affiliation && (
                         <div className="text-xs text-muted-foreground truncate">
