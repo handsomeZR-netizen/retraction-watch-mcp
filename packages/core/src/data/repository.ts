@@ -172,7 +172,11 @@ export class RetractionWatchRepository {
     const hardRecords = this.getRecordsByIds(hardIds, noticeTypes, hardIds.length);
     const softLimit = Math.max(limit * 8, 100);
     const softRecords = this.getRecordsByIds(softIds, noticeTypes, softLimit);
-    return [...hardRecords, ...softRecords].slice(0, Math.max(limit, hardRecords.length));
+    // Return the full hard + soft pool to the scorer; it will rank and the
+    // *caller* applies the output limit. Truncating soft here would drop true
+    // matches whose hard identifiers happen not to be present (common-name
+    // case where institution evidence makes the difference).
+    return [...hardRecords, ...softRecords];
   }
 
   findReferenceCandidates(

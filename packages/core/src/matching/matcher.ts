@@ -197,6 +197,24 @@ function scoreName(
       });
     }
 
+    // Variant-set intersection: catches "Zhang W" vs "Wei Zhang" where each
+    // side has the other's surname-initial form in its variants list but
+    // neither equals the other's normalized form.
+    if (queryName.variants.length > 0 && author.variants.length > 0) {
+      const variantSet = new Set(queryName.variants);
+      const shared = author.variants.find((v) => variantSet.has(v));
+      if (shared) {
+        context.hasNameEvidence = true;
+        context.matchedFields.add("name");
+        return addEvidence(context, {
+          field: "name",
+          strength: "medium",
+          message: `Author name shares the variant "${shared}" with "${author.original}".`,
+          scoreDelta: policy.weights.nameVariant,
+        });
+      }
+    }
+
     if (author.signature && author.signature === queryName.signature) {
       context.hasNameEvidence = true;
       context.matchedFields.add("name");
@@ -343,8 +361,15 @@ function scoreEmailDomain(
 }
 
 function classify(score: number, context: ScoreContext, policy: ScreeningPolicy): MatchVerdict {
+  // For person screening: a hard identifier (DOI/PMID) is record-level
+  // evidence — it confirms the *paper* was retracted, but not that the queried
+  // person is one of its authors. Only return `confirmed` when the name also
+  // matches; otherwise treat as a strong nearMiss/likely so reviewers see it
+  // without it counting as a positive identity hit.
   if (context.hasHardIdentifier) {
-    return "confirmed";
+    if (context.hasNameEvidence) return "confirmed";
+    // Hard identifier but no name match → flag for review, do not confirm.
+    return "likely_match";
   }
   if (policy.safety.hardIdentifiersOnly) {
     return "no_match";

@@ -159,6 +159,10 @@ async function unzipToMemory(
       if (err || !zip) return reject(err ?? new Error("zip open failed"));
       let entries = 0;
       let totalUncompressed = 0;
+      // Real streamed-byte counter — defends against malicious archives that
+      // declare a tiny `uncompressedSize` but stream way more data after we
+      // call openReadStream.
+      let streamedTotal = 0;
       let settled = false;
       const fail = (reason: string) => {
         if (settled) return;
@@ -209,8 +213,14 @@ async function unzipToMemory(
           let bytes = 0;
           stream.on("data", (c: Buffer) => {
             bytes += c.byteLength;
+            streamedTotal += c.byteLength;
             if (bytes > ZIP_MAX_ENTRY_BYTES) {
               fail("max entry bytes exceeded");
+              stream.destroy();
+              return;
+            }
+            if (streamedTotal > ZIP_MAX_TOTAL_BYTES) {
+              fail("max total bytes exceeded (streamed)");
               stream.destroy();
               return;
             }

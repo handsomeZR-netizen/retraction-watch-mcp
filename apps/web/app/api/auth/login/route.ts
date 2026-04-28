@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
 import { writeAudit } from "@/lib/db/audit";
 import { findUserByUsername, touchLastLogin } from "@/lib/db/users";
-import { verifyPassword } from "@/lib/auth/password";
+import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { rateLimit } from "@/lib/auth/rate-limit";
 import { loginAs } from "@/lib/auth/session";
 import { getRequestIp, validateUsername } from "@/lib/auth/validate";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+// Precomputed at module load: a real bcrypt hash of an unguessable input.
+// Used as the compare target on missing/disabled users so login latency does
+// not leak valid usernames.
+const DUMMY_HASH_PROMISE = hashPassword(`__rw_dummy_${Date.now()}_${Math.random()}`);
 
 export async function POST(req: Request) {
   const ip = getRequestIp(req.headers);
@@ -40,13 +45,19 @@ export async function POST(req: Request) {
   }
 
   const user = findUserByUsername(u.value!);
-  if (!user || user.disabled) {
-    writeAudit({ action: "login_failed", detail: { username: u.value }, ip, userAgent: ua });
-    return NextResponse.json({ error: "用户名或密码错误" }, { status: 401 });
-  }
-  const ok = await verifyPassword(body.password, user.password_hash);
-  if (!ok) {
-    writeAudit({ userId: user.id, action: "login_failed", ip, userAgent: ua });
+  // Constant-time path: always run a bcrypt compare, even when the user is
+  // missing or disabled, so an attacker cannot enumerate valid usernames by
+  // timing the response.
+  const target = user && !user.disabled ? user.password_hash : await DUMMY_HASH_PROMISE;
+  const ok = await verifyPassword(body.password, target);
+  if (!user || user.disabled || !ok) {
+    writeAudit({
+      userId: user?.id,
+      action: "login_failed",
+      detail: user ? undefined : { username: u.value },
+      ip,
+      userAgent: ua,
+    });
     return NextResponse.json({ error: "用户名或密码错误" }, { status: 401 });
   }
 

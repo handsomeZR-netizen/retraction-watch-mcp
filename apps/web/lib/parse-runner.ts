@@ -74,6 +74,15 @@ export function startParseJob(input: {
   return { ok: true, parseJobId };
 }
 
+/**
+ * True only when this process owns a runner state for the given manuscript.
+ * Used by parse-stream to detect "DB says parsing but the producer process
+ * died" so we can surface an error instead of hanging the SSE forever.
+ */
+export function hasParseState(manuscriptId: string): boolean {
+  return states.has(manuscriptId);
+}
+
 export function subscribeParseProgress(
   manuscriptId: string,
   onEvent: (event: ParseProgressEvent) => void,
@@ -117,6 +126,10 @@ async function drainQueue(): Promise<void> {
  * Mark the runner as shutting down: refuse new jobs, wait up to `timeoutMs`
  * for the in-flight job to finish, then mark anything still queued or
  * running as errored so the next process can re-acquire the lease.
+ *
+ * Always flushPendingAsError on the way out — `drainQueue` exits as soon as
+ * shuttingDown is true, leaving queued jobs stranded as `parsing` unless we
+ * sweep them here.
  */
 export async function gracefulDrain(timeoutMs = 30_000): Promise<void> {
   shuttingDown = true;
@@ -131,9 +144,9 @@ export async function gracefulDrain(timeoutMs = 30_000): Promise<void> {
     drainPromise.then(() => "done" as const),
     timeout,
   ]);
-  if (outcome === "timeout") {
-    flushPendingAsError("server-restart-timeout");
-  }
+  flushPendingAsError(
+    outcome === "timeout" ? "server-restart-timeout" : "server-restart",
+  );
 }
 
 function flushPendingAsError(reason: string): void {
@@ -195,11 +208,11 @@ async function runParseJob(job: ParseJob): Promise<void> {
     );
 
     const resultPath = path.dirname(upload.filePath);
-    // Compare-and-set on parseJobId: if the lease was already broken (e.g. a
-    // graceful-drain timeout marked this job errored mid-flight) markManuscriptDone
-    // returns false and we skip writing the result file + screening log entry,
-    // so the DB and filesystem stay consistent.
-    await saveResult(job.manuscriptId, result);
+    // Compare-and-set on parseJobId BEFORE writing result.json. If the lease
+    // was already revoked (e.g. graceful-drain marked this job errored after
+    // a timeout) markManuscriptDone returns false and we abandon the write so
+    // we don't overwrite a (potentially stale) result file with one whose
+    // owner never reclaimed the lease.
     const claimed = markManuscriptDone({
       id: job.manuscriptId,
       parseJobId: job.parseJobId,
@@ -212,11 +225,12 @@ async function runParseJob(job: ParseJob): Promise<void> {
     });
     if (!claimed) {
       console.warn(
-        `[parse-runner] lease lost for ${job.manuscriptId}; skipping screening-log write`,
+        `[parse-runner] lease lost for ${job.manuscriptId}; skipping result.json + screening-log write`,
       );
       if (state) state.status = "error";
       return;
     }
+    await saveResult(job.manuscriptId, result);
 
     try {
       writeScreeningLog({

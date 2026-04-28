@@ -4,6 +4,7 @@
 import fs from "node:fs/promises";
 import { getConfigDir, getDataDir } from "@/lib/config";
 import { getAppDb } from "@/lib/db/app-db";
+import { recoverStaleParseLeases } from "@/lib/db/manuscripts";
 import { gracefulDrain } from "@/lib/parse-runner";
 import { getRepository } from "@/lib/repository";
 
@@ -22,6 +23,13 @@ for (const dir of dirs) {
 // Open app DB (triggers migrations) — synchronous; throws on bad state.
 try {
   getAppDb();
+  // Reset any manuscripts the previous process left in `parsing` state. The
+  // in-memory queue does not survive restart so those rows would otherwise
+  // be stuck forever.
+  const recovered = recoverStaleParseLeases("server-restart-recovery");
+  if (recovered > 0) {
+    console.warn(`[startup] reset ${recovered} stale parsing manuscript(s) from previous process`);
+  }
 } catch (err) {
   console.error("[startup] failed to open app DB:", err);
   process.exit(1);

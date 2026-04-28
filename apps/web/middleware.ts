@@ -1,5 +1,37 @@
+import { unsealData } from "iron-session";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+
+interface SessionPayload {
+  userId?: string;
+  role?: "user" | "admin";
+  sessionVersion?: number;
+}
+
+// Edge-safe session secret resolution. Mirrors apps/web/lib/auth/session.ts
+// but does NOT touch fs (middleware runs on the edge runtime) — operators who
+// want secret-file support must also export the value as RW_SESSION_SECRET in
+// their orchestrator environment so middleware can read it.
+function sessionSecret(): string | null {
+  const raw = process.env.RW_SESSION_SECRET?.trim();
+  if (raw) return raw;
+  if (process.env.NODE_ENV !== "production") {
+    return "dev-only-rw-screen-session-secret-change-me-in-production-32bytes";
+  }
+  return null;
+}
+
+async function verifySessionCookie(value: string): Promise<SessionPayload | null> {
+  const password = sessionSecret();
+  if (!password) return null;
+  try {
+    const data = (await unsealData(value, { password })) as SessionPayload;
+    if (!data || !data.userId) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
 
 const PUBLIC_PATHS = new Set([
   "/login",
@@ -78,7 +110,7 @@ function parseUrl(value: string | null): URL | null {
   }
 }
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // CSRF check runs even for public API routes (login/register etc.) — it is
@@ -90,8 +122,13 @@ export function middleware(req: NextRequest) {
   if (PUBLIC_PATH_PREFIXES.some((p) => pathname.startsWith(p))) return NextResponse.next();
   if (PUBLIC_API_PREFIXES.some((p) => pathname.startsWith(p))) return NextResponse.next();
 
+  // Validate the session cookie by actually unsealing it. The previous "cookie
+  // exists" check let any arbitrary value through to the protected handler;
+  // requireUser inside the route still rejects, but bouncing here saves work
+  // and avoids exposing handlers to bogus traffic.
   const cookie = req.cookies.get("rw_screen_session");
-  if (!cookie) {
+  const session = cookie ? await verifySessionCookie(cookie.value) : null;
+  if (!session) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }

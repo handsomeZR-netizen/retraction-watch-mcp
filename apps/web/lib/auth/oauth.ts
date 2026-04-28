@@ -9,7 +9,21 @@ export interface ProviderConfig {
   scope: string;
   clientId: string;
   clientSecret: string;
-  parseUser: (raw: unknown) => { providerId: string; email: string | null; username: string | null; avatarUrl: string | null };
+  parseUser: (raw: unknown) => {
+    providerId: string;
+    email: string | null;
+    /**
+     * True only when the provider asserts the email is verified. Google sets
+     * `email_verified: true` on the OIDC response; GitHub only includes a
+     * `verified` flag via the /user/emails endpoint (handled in fetchUserInfo).
+     * Auto-linking to an existing local account MUST require this — otherwise
+     * an attacker controlling an unverified matching email takes over the
+     * account.
+     */
+    emailVerified: boolean;
+    username: string | null;
+    avatarUrl: string | null;
+  };
 }
 
 const PROVIDERS: Record<OAuthProvider, () => ProviderConfig | null> = {
@@ -25,10 +39,19 @@ const PROVIDERS: Record<OAuthProvider, () => ProviderConfig | null> = {
       clientId,
       clientSecret,
       parseUser: (raw) => {
-        const r = raw as { id?: number | string; login?: string; email?: string | null; avatar_url?: string };
+        const r = raw as {
+          id?: number | string;
+          login?: string;
+          email?: string | null;
+          email_verified?: boolean;
+          avatar_url?: string;
+        };
         return {
           providerId: String(r.id ?? ""),
           email: r.email ?? null,
+          // GitHub /user does not return verification status; fetchUserInfo
+          // attaches `email_verified` after consulting /user/emails.
+          emailVerified: r.email_verified === true,
           username: r.login ?? null,
           avatarUrl: r.avatar_url ?? null,
         };
@@ -47,10 +70,18 @@ const PROVIDERS: Record<OAuthProvider, () => ProviderConfig | null> = {
       clientId,
       clientSecret,
       parseUser: (raw) => {
-        const r = raw as { sub?: string; email?: string; name?: string; picture?: string };
+        const r = raw as {
+          sub?: string;
+          email?: string;
+          email_verified?: boolean;
+          name?: string;
+          picture?: string;
+        };
         return {
           providerId: r.sub ?? "",
           email: r.email ?? null,
+          // OIDC: only treat as verified when Google asserts it explicitly.
+          emailVerified: r.email_verified === true,
           username: r.name ?? r.email?.split("@")[0] ?? null,
           avatarUrl: r.picture ?? null,
         };
@@ -135,17 +166,35 @@ export async function fetchUserInfo(
     },
   });
   if (!res.ok) throw new Error(`userinfo failed: ${res.status}`);
-  let raw: unknown = await res.json();
+  const raw: unknown = await res.json();
   if (provider === "github") {
-    const u = raw as { email?: string | null };
-    if (!u.email) {
-      const er = await fetch("https://api.github.com/user/emails", {
-        headers: { Authorization: `Bearer ${accessToken}`, "User-Agent": "rw-screen", Accept: "application/json" },
-      });
-      if (er.ok) {
-        const list = (await er.json()) as Array<{ email: string; primary: boolean; verified: boolean }>;
-        const primary = list.find((e) => e.primary && e.verified) ?? list.find((e) => e.verified);
-        if (primary) (raw as { email?: string }).email = primary.email;
+    // Always consult /user/emails so we know whether the address is verified;
+    // /user alone does not include verification status. This is required for
+    // safe auto-linking to existing local accounts.
+    const er = await fetch("https://api.github.com/user/emails", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "User-Agent": "rw-screen",
+        Accept: "application/json",
+      },
+    });
+    if (er.ok) {
+      const list = (await er.json()) as Array<{
+        email: string;
+        primary: boolean;
+        verified: boolean;
+      }>;
+      const primary =
+        list.find((e) => e.primary && e.verified) ?? list.find((e) => e.verified);
+      const target = raw as { email?: string | null; email_verified?: boolean };
+      if (primary) {
+        target.email = primary.email;
+        target.email_verified = true;
+      } else {
+        // No verified email available; clear whatever /user reported so the
+        // callback won't auto-link.
+        target.email = null;
+        target.email_verified = false;
       }
     }
   }

@@ -41,7 +41,8 @@ export async function screenReference(
 ): Promise<ScreenReferenceResult> {
   const policy = basePolicy;
   const noticeTypes = options.noticeTypes ?? DEFAULT_NOTICE_TYPES;
-  const candidateLimit = options.candidateLimit ?? 25;
+  const rawLimit = options.candidateLimit ?? 25;
+  const candidateLimit = Math.max(1, Math.min(200, Math.floor(Number(rawLimit) || 25)));
 
   const candidates: ReferenceMatchCandidate[] = [];
 
@@ -86,7 +87,11 @@ export async function screenReference(
     input,
     verdict: best?.verdict ?? "no_match",
     score: best?.score ?? 0,
-    reviewRequired: best ? best.verdict !== "confirmed" : false,
+    // reviewRequired is true whenever we have anything short of a confirmed
+    // best candidate OR there are near-misses worth a human glance.
+    reviewRequired: best
+      ? best.verdict !== "confirmed"
+      : nearMisses.length > 0,
     matchedFields: best?.matchedFields ?? [],
     evidence: best?.evidence ?? [],
     bestCandidate: best,

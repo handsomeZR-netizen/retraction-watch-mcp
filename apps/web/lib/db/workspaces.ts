@@ -171,22 +171,30 @@ export function getInvite(token: string): WorkspaceInviteRow | null {
 }
 
 export function consumeInvite(token: string, userId: string): WorkspaceInviteRow | null {
-  const inv = getInvite(token);
-  if (!inv) return null;
-  if (inv.used_at) return null;
-  if (inv.expires_at && Date.parse(inv.expires_at) < Date.now()) return null;
   const db = getAppDb();
+  const now = new Date().toISOString();
   const tx = db.transaction(() => {
-    db.prepare(
-      "UPDATE workspace_invites SET used_by = ?, used_at = ? WHERE token = ?",
-    ).run(userId, new Date().toISOString(), token);
+    // Atomic CAS: only consume tokens that are still un-used and unexpired.
+    // RETURNING gives us the row only if the UPDATE actually fired, so two
+    // concurrent requests racing on the same invite cannot both succeed.
+    const claimed = db
+      .prepare(
+        `UPDATE workspace_invites
+            SET used_by = ?, used_at = ?
+          WHERE token = ?
+            AND used_at IS NULL
+            AND (expires_at IS NULL OR expires_at >= ?)
+       RETURNING *`,
+      )
+      .get(userId, now, token, now) as WorkspaceInviteRow | undefined;
+    if (!claimed) return null;
     db.prepare(
       `INSERT OR IGNORE INTO workspace_members (workspace_id, user_id, role, joined_at)
        VALUES (?, ?, ?, ?)`,
-    ).run(inv.workspace_id, userId, inv.role, new Date().toISOString());
+    ).run(claimed.workspace_id, userId, claimed.role, now);
+    return claimed;
   });
-  tx();
-  return getInvite(token);
+  return tx();
 }
 
 export function listWorkspaceInvites(workspaceId: string): WorkspaceInviteRow[] {

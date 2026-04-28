@@ -28,14 +28,26 @@ const baseRecord: RwRecord = {
 };
 
 describe("matcher", () => {
-  it("confirms exact DOI matches", () => {
+  it("confirms exact DOI when the queried name also matches an author", () => {
     const candidate = scoreCandidate(baseRecord, {
-      name: "Different Person",
+      name: "Ahsen Maqsoom",
       doi: "https://doi.org/10.1000/original",
     });
 
     expect(candidate.verdict).toBe("confirmed");
     expect(candidate.reviewRequired).toBe(false);
+    expect(candidate.matchedFields).toEqual(expect.arrayContaining(["doi", "name"]));
+  });
+
+  it("does NOT confirm a DOI hit when the queried name is not an author of the record", () => {
+    const candidate = scoreCandidate(baseRecord, {
+      name: "Different Person",
+      doi: "https://doi.org/10.1000/original",
+    });
+
+    // The paper IS retracted (DOI matches), but the queried person is not on
+    // the record's author list, so we must not call this an identity hit.
+    expect(candidate.verdict).not.toBe("confirmed");
     expect(candidate.matchedFields).toContain("doi");
   });
 

@@ -151,6 +151,26 @@ export function acquireParseLease(id: string, parseJobId: string): boolean {
   return info.changes > 0;
 }
 
+/**
+ * Reset any manuscripts left in `parsing` state from a previous process. The
+ * in-memory queue and EventEmitter do not survive a restart, so a row marked
+ * `parsing` with a `parse_job_id` after startup belongs to a dead process and
+ * cannot be recovered. Mark them as errored so the user can retry. Returns
+ * the count of rows reset.
+ */
+export function recoverStaleParseLeases(reason: string): number {
+  const info = getAppDb()
+    .prepare(
+      `UPDATE manuscripts
+          SET status = 'error',
+              parse_job_id = NULL,
+              error = ?
+        WHERE status = 'parsing'`,
+    )
+    .run(reason);
+  return info.changes;
+}
+
 export function getManuscript(id: string): ManuscriptRow | null {
   const row = getAppDb()
     .prepare("SELECT * FROM manuscripts WHERE id = ?")

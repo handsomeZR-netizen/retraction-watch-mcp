@@ -112,10 +112,12 @@ export async function screenManuscript(
     detail: { count: screenedAuthors.length, hits: authorHits.length },
   });
 
-  const rawRefs: RawReference[] =
-    bibReferences.length > 0
-      ? []
-      : locateAndSplitReferences(extracted);
+  // Always run the text-based reference splitter, even when bibReferences
+  // already contains parsed entries. A custom citation macro or partial
+  // \bibitem block could still leave references unparsed; merging both
+  // sources avoids silently dropping them. Duplicates collapse later via
+  // structured DOI/title comparison in the screening loop.
+  const rawRefs: RawReference[] = locateAndSplitReferences(extracted);
   progress({
     stage: "refs_segmented",
     message: `参考文献分割：${bibReferences.length + rawRefs.length} 条`,
@@ -129,11 +131,11 @@ export async function screenManuscript(
     llmStructured = await llmClient.structureReferences(unresolved);
   }
 
-  const allStructured: StructuredReference[] = [
+  const allStructured: StructuredReference[] = dedupeStructuredRefs([
     ...bibReferences,
     ...regexStructured,
     ...llmStructured,
-  ];
+  ]);
 
   progress({
     stage: "refs_structured",
@@ -272,6 +274,28 @@ export function countTotals(
     }
   }
   return totals;
+}
+
+/**
+ * Drop duplicate references from the merged bib + regex + llm pool. A bib
+ * entry and its regex-fallback parse for the same line should only count once.
+ * Identity priority: normalized DOI > normalized PMID > lowercased title >
+ * first 200 chars of the raw text.
+ */
+function dedupeStructuredRefs(refs: StructuredReference[]): StructuredReference[] {
+  const seen = new Set<string>();
+  const out: StructuredReference[] = [];
+  for (const ref of refs) {
+    const key =
+      (ref.doi ? `doi:${ref.doi.toLowerCase().trim()}` : "") ||
+      (ref.pmid ? `pmid:${ref.pmid.trim()}` : "") ||
+      (ref.title ? `title:${ref.title.toLowerCase().replace(/\s+/g, " ").trim()}` : "") ||
+      `raw:${(ref.raw ?? "").slice(0, 200)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(ref);
+  }
+  return out;
 }
 
 export function decideVerdict(totals: ReturnType<typeof countTotals>, warnings: string[] = []): ManuscriptVerdict {

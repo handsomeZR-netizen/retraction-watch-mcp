@@ -63,7 +63,9 @@ export async function GET(
     let userId: string;
     if (existing) {
       userId = existing.user_id;
-    } else if (info.email && findUserByEmail(info.email)) {
+    } else if (info.email && info.emailVerified && findUserByEmail(info.email)) {
+      // SAFE: the provider asserts the email is verified, so we can match it
+      // to an existing local account that registered with the same email.
       const u = findUserByEmail(info.email)!;
       userId = u.id;
       linkIdentity({
@@ -74,6 +76,13 @@ export async function GET(
         username: info.username,
         avatarUrl: info.avatarUrl,
       });
+    } else if (info.email && !info.emailVerified && findUserByEmail(info.email)) {
+      // UNSAFE: would let an attacker controlling an unverified provider email
+      // take over an existing account. Refuse the auto-link and ask the user
+      // to log in normally first, then link from /account.
+      return NextResponse.redirect(
+        `${appBaseUrl(req)}/login?error=oauth_unverified_email`,
+      );
     } else {
       // create new
       let username =
@@ -89,7 +98,8 @@ export async function GET(
         displayName: info.username ?? undefined,
         role,
       });
-      if (info.email) setUserEmail(u.id, info.email, true);
+      // Only mark email as verified locally when the provider asserts it.
+      if (info.email) setUserEmail(u.id, info.email, info.emailVerified === true);
       if (info.avatarUrl || info.username) setAvatarSeed(u.id, info.username ?? username);
       linkIdentity({
         provider: provider.provider,

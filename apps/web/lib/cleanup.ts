@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getDataDir, loadConfig } from "@/lib/config";
+import { getAppDb } from "@/lib/db/app-db";
 import { pruneAuditLog } from "@/lib/db/audit";
 import {
   deleteManuscript,
@@ -9,6 +10,17 @@ import {
 import { deleteOldUploads } from "@/lib/store";
 
 const AUDIT_RETENTION_DAYS = 90;
+
+function buildInProgressFilter(): (id: string) => boolean {
+  // Snapshot the set of manuscripts currently in `parsing` status so cleanup
+  // never deletes their upload dir mid-parse. Snapshot per cleanup pass; a new
+  // job started during the pass simply gets cleaned next tick if eligible.
+  const rows = getAppDb()
+    .prepare("SELECT id FROM manuscripts WHERE status = 'parsing'")
+    .all() as { id: string }[];
+  const inFlight = new Set(rows.map((r) => r.id));
+  return (id: string) => inFlight.has(id);
+}
 
 let started = false;
 let running = false;
@@ -30,7 +42,12 @@ async function runCleanupOnce(): Promise<void> {
   try {
     const config = await loadConfig();
     const keepHours = config.retention.keepHours;
-    const removedUploads = await deleteOldUploads(keepHours);
+    const isInProgress = buildInProgressFilter();
+    // Honor the "keep all uploads" config flag — previously we always pruned
+    // by age regardless of this setting.
+    const removedUploads = config.retention.keepUploads
+      ? 0
+      : await deleteOldUploads(keepHours, { isInProgress });
     const removedErrors = await deleteErroredManuscripts(keepHours);
     const removedAudit = pruneAuditLog(AUDIT_RETENTION_DAYS);
     if (removedUploads > 0 || removedErrors > 0 || removedAudit > 0) {

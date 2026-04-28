@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth/guard";
 import { canAccessManuscript } from "@/lib/auth/scope";
+import { getRequestIp } from "@/lib/auth/validate";
+import { writeAudit } from "@/lib/db/audit";
 import { getManuscript, setManuscriptArchived, setManuscriptProject } from "@/lib/db/manuscripts";
 import { getProject, type ProjectRow } from "@/lib/db/projects";
 import { isWorkspaceMember } from "@/lib/db/workspaces";
@@ -53,6 +55,18 @@ export async function POST(
   if (parsed.data.archived !== undefined) {
     setManuscriptArchived(id, parsed.data.archived);
   }
+  writeAudit({
+    userId: auth.user.id,
+    action: "change_settings",
+    detail: {
+      manuscriptId: id,
+      kind: "organize",
+      projectId: parsed.data.projectId === null ? null : parsed.data.projectId ?? undefined,
+      archived: parsed.data.archived,
+    },
+    ip: getRequestIp(req.headers),
+    userAgent: req.headers.get("user-agent"),
+  });
   return NextResponse.json({ ok: true });
 }
 

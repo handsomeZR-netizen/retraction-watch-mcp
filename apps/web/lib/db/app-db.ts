@@ -20,14 +20,19 @@ export function getAppDb(): DB {
 
 function migrate(db: DB): void {
   const current = (db.pragma("user_version", { simple: true }) as number) ?? 0;
-  if (current < 1) applyV1(db);
-  if (current < 2) applyV2(db);
-  if (current < 3) applyV3(db);
-  if (current < 4) applyV4(db);
-  if (current < 5) applyV5(db);
-  if (current < 6) applyV6(db);
-  if (current < 7) applyV7(db);
-  if (current < 8) applyV8(db);
+  // Wrap each migration step in its own transaction so a partial failure
+  // rolls back instead of leaving the schema half-applied with an advanced
+  // user_version. better-sqlite3's db.transaction returns a callable that
+  // executes synchronously inside BEGIN/COMMIT (or ROLLBACK on throw).
+  const inTx = (fn: (db: DB) => void) => db.transaction(() => fn(db))();
+  if (current < 1) inTx(applyV1);
+  if (current < 2) inTx(applyV2);
+  if (current < 3) inTx(applyV3);
+  if (current < 4) inTx(applyV4);
+  if (current < 5) inTx(applyV5);
+  if (current < 6) inTx(applyV6);
+  if (current < 7) inTx(applyV7);
+  if (current < 8) inTx(applyV8);
 }
 
 function applyV1(db: DB): void {

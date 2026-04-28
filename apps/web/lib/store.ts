@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -7,6 +7,18 @@ import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import type { FileType, ManuscriptScreenResult } from "@rw/core";
 import { getDataDir } from "./config";
+
+/**
+ * Atomic JSON write: write to a sibling `.tmp` then rename. Rename is atomic
+ * on POSIX and on Windows (when the target exists, it's replaced atomically
+ * since Node 14). This prevents readers from seeing half-written JSON if the
+ * process crashes mid-write.
+ */
+async function writeJsonAtomic(targetPath: string, payload: unknown): Promise<void> {
+  const tmp = `${targetPath}.${randomUUID().slice(0, 8)}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(payload, null, 2));
+  await fs.rename(tmp, targetPath);
+}
 
 export interface UploadRecord {
   manuscriptId: string;
@@ -140,7 +152,7 @@ export async function saveUpload(input: {
     filePath,
     sha256,
   };
-  await fs.writeFile(path.join(dir, "upload.json"), JSON.stringify(record, null, 2));
+  await writeJsonAtomic(path.join(dir, "upload.json"), record);
   return record;
 }
 
@@ -164,10 +176,7 @@ export async function getUpload(manuscriptId: string): Promise<UploadRecord | nu
 }
 
 export async function saveResult(manuscriptId: string, result: ManuscriptScreenResult): Promise<void> {
-  await fs.writeFile(
-    path.join(manuscriptDir(manuscriptId), "result.json"),
-    JSON.stringify(result, null, 2),
-  );
+  await writeJsonAtomic(path.join(manuscriptDir(manuscriptId), "result.json"), result);
 }
 
 export async function getResult(manuscriptId: string): Promise<ManuscriptScreenResult | null> {
@@ -193,17 +202,28 @@ export async function listManuscripts(limit = 20): Promise<UploadRecord[]> {
     .slice(0, limit);
 }
 
-export async function deleteOldUploads(olderThanHours: number): Promise<number> {
+// Conservative UUID-ish guard; manuscript IDs are randomUUID strings. Reject
+// anything else so a poisoned listing/DB row can't trick us into rm-rf'ing a
+// directory outside the data dir.
+const MANUSCRIPT_ID_RE = /^[0-9a-fA-F-]{8,64}$/;
+
+export async function deleteOldUploads(
+  olderThanHours: number,
+  options: { isInProgress?: (id: string) => boolean } = {},
+): Promise<number> {
   const dir = await ensureDataDir();
   const entries = await fs.readdir(dir, { withFileTypes: true });
   const cutoff = Date.now() - olderThanHours * 3600_000;
   let removed = 0;
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
+    if (!MANUSCRIPT_ID_RE.test(entry.name)) continue;
+    if (options.isInProgress?.(entry.name)) continue;
     const upload = await getUpload(entry.name);
     if (!upload) continue;
     if (Date.parse(upload.uploadedAt) < cutoff) {
-      await fs.rm(path.join(dir, entry.name), { recursive: true, force: true });
+      const target = assertWithinDir(path.join(dir, entry.name), dir);
+      await fs.rm(target, { recursive: true, force: true });
       removed += 1;
     }
   }

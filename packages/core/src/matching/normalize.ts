@@ -193,6 +193,9 @@ export function normalizeDoi(value: string | undefined): string {
   return raw
     .replace(/^https?:\/\/(dx\.)?doi\.org\//i, "")
     .replace(/^doi:\s*/i, "")
+    // Strip trailing punctuation/quote that commonly slips through when DOIs
+    // are pasted from prose ("…doi:10.1000/foo." or "[10.1000/foo]").
+    .replace(/[.,;\)\]>"'\s]+$/, "")
     .trim()
     .toLowerCase();
 }
@@ -301,7 +304,14 @@ export function tokenOverlapScore(left: Set<string>, right: Set<string>): number
       intersection += 1;
     }
   }
-  return intersection / Math.min(left.size, right.size);
+  // Use min-set as denominator (so "Harvard Medical" matches "Harvard Medical
+  // School" with score 1.0) but require at least 2 shared tokens whenever the
+  // smaller side has ≥2 tokens. This prevents a single distinctive token like
+  // "tsinghua" from scoring 1.0 against any record mentioning it, which would
+  // amplify common-name false positives into likely_match.
+  const minSize = Math.min(left.size, right.size);
+  if (minSize >= 2 && intersection < 2) return intersection / Math.max(left.size, right.size);
+  return intersection / minSize;
 }
 
 export function jaccardSimilarity(left: Set<string>, right: Set<string>): number {
