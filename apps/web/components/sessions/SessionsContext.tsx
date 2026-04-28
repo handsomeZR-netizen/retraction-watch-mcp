@@ -256,7 +256,6 @@ export function progressPercent(session: ActiveSession): number {
   if (session.stage === "screening" && session.progress) {
     // Screening reports n/total; proportionally scale within the screening band.
     const base = STAGE_ORDER.indexOf("screening");
-    const stageBand = 1 / STAGE_ORDER.length;
     const within = session.progress.current / Math.max(session.progress.total, 1);
     return Math.min(95, ((base + within) / STAGE_ORDER.length) * 100);
   }

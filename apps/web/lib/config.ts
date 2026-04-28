@@ -40,7 +40,7 @@ export function getConfigDir(): string {
   if (process.env.RW_SCREEN_CONFIG_DIR) {
     return path.resolve(process.env.RW_SCREEN_CONFIG_DIR);
   }
-  return path.join(os.homedir(), ".config", "rw-screen");
+  return path.join(getRuntimeHomeDir(), ".config", "rw-screen");
 }
 
 export function getConfigPath(): string {
@@ -117,4 +117,8 @@ function envOverrides(): Partial<AppConfig> {
     };
   }
   return overrides;
+}
+
+function getRuntimeHomeDir(): string {
+  return process.env.USERPROFILE ?? process.env.HOME ?? os.homedir();
 }

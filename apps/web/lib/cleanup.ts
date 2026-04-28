@@ -2,14 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { getDataDir, loadConfig } from "@/lib/config";
 import { getAppDb } from "@/lib/db/app-db";
-import { pruneAuditLog } from "@/lib/db/audit";
 import {
   deleteManuscript,
   listErroredManuscriptsOlderThan,
 } from "@/lib/db/manuscripts";
 import { deleteOldUploads } from "@/lib/store";
-
-const AUDIT_RETENTION_DAYS = 90;
 
 function buildInProgressFilter(): (id: string) => boolean {
   // Snapshot the set of manuscripts currently in `parsing` status so cleanup
@@ -49,10 +46,9 @@ async function runCleanupOnce(): Promise<void> {
       ? 0
       : await deleteOldUploads(keepHours, { isInProgress });
     const removedErrors = await deleteErroredManuscripts(keepHours);
-    const removedAudit = pruneAuditLog(AUDIT_RETENTION_DAYS);
-    if (removedUploads > 0 || removedErrors > 0 || removedAudit > 0) {
+    if (removedUploads > 0 || removedErrors > 0) {
       console.warn(
-        `[cleanup] removed uploads=${removedUploads}, errored manuscripts=${removedErrors}, audit_log rows=${removedAudit}`,
+        `[cleanup] removed uploads=${removedUploads}, errored manuscripts=${removedErrors}`,
       );
     }
   } catch (err) {

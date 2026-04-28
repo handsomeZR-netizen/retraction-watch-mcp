@@ -126,14 +126,12 @@ describe("audit allowlist sanitizer", () => {
     expect(rows[0].ip_hash).toBe(rows[1].ip_hash);
   });
 
-  it("pruneAuditLog preserves rows because audit logs are append-only", () => {
+  it("audit log is append-only: rows are never deleted by the module", () => {
     audit.writeAudit({ userId: "user-1", action: "login" });
     db.prepare(
       "UPDATE audit_log SET created_at = ? WHERE id = (SELECT MAX(id) FROM audit_log)",
     ).run("2020-01-01T00:00:00.000Z");
     audit.writeAudit({ userId: "user-1", action: "login" });
-    const removed = audit.pruneAuditLog(30);
-    expect(removed).toBe(0);
     const remaining = db.prepare("SELECT COUNT(*) AS n FROM audit_log").get() as { n: number };
     expect(remaining.n).toBe(2);
   });

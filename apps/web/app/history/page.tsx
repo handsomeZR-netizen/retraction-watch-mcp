@@ -80,6 +80,7 @@ export default function HistoryPage() {
           </p>
         </div>
         <Button variant="outline" size="sm" asChild>
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a href="/api/manuscripts/export">
             <DownloadSimple className="h-4 w-4" weight="bold" />
             导出全部 (NDJSON)

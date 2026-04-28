@@ -1,10 +1,14 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-} from "node:crypto";
+// Audit log is append-only by design: no UPDATE or DELETE statements anywhere in
+// this module. Retention is the operator's responsibility — archive externally
+// (logrotate, scheduled SQLite dump, etc.) rather than deleting rows in place.
+
+import { createHash } from "node:crypto";
 import fs from "node:fs";
+import {
+  decryptString,
+  encryptString,
+  isEncryptedValue,
+} from "@/lib/crypto/data-key";
 import { getAppDb } from "./app-db";
 
 export type AuditAction =
@@ -62,9 +66,6 @@ const SENSITIVE_DETAIL_FIELD_ALLOWLIST = new Set([
   "targetDisplayName",
   "reason",
 ]);
-
-const ENCRYPTED_VALUE_PREFIX = "enc:v1:";
-const DEV_SESSION_SECRET = "dev-only-rw-screen-session-secret-change-me-in-production-32bytes";
 
 export function writeAudit(input: {
   userId?: string | null;
@@ -182,29 +183,30 @@ function hashIp(ip: string): string {
   return createHash("sha256").update(`${salt}:${ip}`).digest("hex").slice(0, 16);
 }
 
-let cachedSalt: string | null = null;
+// Cache keyed by the resolved secret, so a test that swaps RW_SESSION_SECRET /
+// RW_DATA_KEY mid-suite gets a fresh salt on the next call instead of a stale
+// hash. Production env never changes after startup, so the cache still hits.
+let cachedSalt: { key: string; value: string } | null = null;
 
 function resolveAuditSalt(): string {
-  if (cachedSalt) return cachedSalt;
   const candidates = [
     process.env.RW_DATA_KEY?.trim(),
     readFileEnv("RW_DATA_KEY_FILE"),
     process.env.RW_SESSION_SECRET?.trim(),
     readFileEnv("RW_SESSION_SECRET_FILE"),
   ];
-  for (const value of candidates) {
-    if (value) {
-      cachedSalt = value;
-      return value;
-    }
+  const resolved = candidates.find((v) => v) ?? null;
+  if (resolved) {
+    if (cachedSalt?.key !== resolved) cachedSalt = { key: resolved, value: resolved };
+    return cachedSalt.value;
   }
   if (process.env.NODE_ENV === "production") {
     throw new Error(
       "audit IP hashing requires RW_DATA_KEY or RW_SESSION_SECRET (or *_FILE) in production",
     );
   }
-  cachedSalt = "rw-screen-dev";
-  return cachedSalt;
+  if (cachedSalt?.key !== "__dev__") cachedSalt = { key: "__dev__", value: "rw-screen-dev" };
+  return cachedSalt.value;
 }
 
 function readFileEnv(name: string): string | null {
@@ -216,11 +218,6 @@ function readFileEnv(name: string): string | null {
   } catch {
     return null;
   }
-}
-
-export function pruneAuditLog(olderThanDays: number): number {
-  void olderThanDays;
-  return 0;
 }
 
 function sanitizeAuditDetail(detail: unknown): Record<string, unknown> | null {
@@ -258,55 +255,4 @@ function isSafeAuditValue(value: unknown): boolean {
     return true;
   }
   return Array.isArray(value) && value.every((v) => typeof v === "string");
-}
-
-function dataKey(): Buffer {
-  const raw = process.env.RW_DATA_KEY?.trim() ?? readFileEnv("RW_DATA_KEY_FILE");
-  if (raw) {
-    if (!/^[0-9a-fA-F]{64}$/.test(raw)) {
-      throw new Error("RW_DATA_KEY must be a 32-byte hex string");
-    }
-    return Buffer.from(raw, "hex");
-  }
-  const sessionSecret =
-    process.env.RW_SESSION_SECRET?.trim() ??
-    readFileEnv("RW_SESSION_SECRET_FILE") ??
-    DEV_SESSION_SECRET;
-  if (process.env.NODE_ENV === "production" && sessionSecret === DEV_SESSION_SECRET) {
-    throw new Error("audit detail encryption requires RW_DATA_KEY in production");
-  }
-  return createHash("sha256").update(sessionSecret).digest();
-}
-
-function encryptString(plaintext: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", dataKey(), iv);
-  const ciphertext = Buffer.concat([
-    cipher.update(plaintext, "utf8"),
-    cipher.final(),
-  ]);
-  const tag = cipher.getAuthTag();
-  return [
-    ENCRYPTED_VALUE_PREFIX.slice(0, -1),
-    iv.toString("base64url"),
-    tag.toString("base64url"),
-    ciphertext.toString("base64url"),
-  ].join(":");
-}
-
-function decryptString(encoded: string): string {
-  const parts = encoded.split(":");
-  if (parts.length !== 5 || `${parts[0]}:${parts[1]}:` !== ENCRYPTED_VALUE_PREFIX) {
-    throw new Error("invalid encrypted value");
-  }
-  const iv = Buffer.from(parts[2], "base64url");
-  const tag = Buffer.from(parts[3], "base64url");
-  const ciphertext = Buffer.from(parts[4], "base64url");
-  const decipher = createDecipheriv("aes-256-gcm", dataKey(), iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
-}
-
-function isEncryptedValue(value: string): boolean {
-  return value.startsWith(ENCRYPTED_VALUE_PREFIX);
 }

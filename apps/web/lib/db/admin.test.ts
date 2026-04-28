@@ -248,7 +248,6 @@ describe("admin audit log", () => {
     const source = fs.readFileSync(new URL("./audit.ts", import.meta.url), "utf8");
     expect(source).not.toMatch(/\bUPDATE\s+audit_log\b/i);
     expect(source).not.toMatch(/\bDELETE\s+FROM\s+audit_log\b/i);
-    expect(audit.pruneAuditLog(1)).toBe(0);
   });
 });
 
