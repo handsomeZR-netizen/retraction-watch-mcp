@@ -175,6 +175,41 @@ describe("listManuscriptsByUser archived defaults", () => {
   });
 });
 
+describe("errored manuscript retention cutoff", () => {
+  it("includes errored rows exactly at the cutoff timestamp", () => {
+    manuscripts.insertManuscript({
+      id: "m-error-exact",
+      userId: "user-1",
+      workspaceId: null,
+      fileName: "exact.pdf",
+      fileType: "pdf",
+      bytes: 100,
+      sha256: "sha-error-exact",
+    });
+    manuscripts.insertManuscript({
+      id: "m-error-newer",
+      userId: "user-1",
+      workspaceId: null,
+      fileName: "newer.pdf",
+      fileType: "pdf",
+      bytes: 100,
+      sha256: "sha-error-newer",
+    });
+
+    const cutoff = new Date().toISOString();
+    db.prepare(
+      "UPDATE manuscripts SET status = 'error', uploaded_at = ? WHERE id = ?",
+    ).run(cutoff, "m-error-exact");
+    db.prepare(
+      "UPDATE manuscripts SET status = 'error', uploaded_at = ? WHERE id = ?",
+    ).run(new Date(Date.now() + 1).toISOString(), "m-error-newer");
+
+    expect(
+      manuscripts.listErroredManuscriptsOlderThan(cutoff).map((m) => m.id),
+    ).toEqual(["m-error-exact"]);
+  });
+});
+
 describe("user LLM settings encryption", () => {
   it("stores apiKey encrypted and reads it back decrypted", () => {
     users.setUserLlmSettings("user-1", {

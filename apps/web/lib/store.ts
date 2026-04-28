@@ -237,7 +237,7 @@ export async function deleteOldUploads(
     if (options.isInProgress?.(entry.name)) continue;
     const upload = await getUpload(entry.name);
     if (!upload) continue;
-    if (Date.parse(upload.uploadedAt) < cutoff) {
+    if (Date.parse(upload.uploadedAt) <= cutoff) {
       const target = assertWithinDir(path.join(dir, entry.name), dir);
       await fs.rm(target, { recursive: true, force: true });
       removed += 1;
