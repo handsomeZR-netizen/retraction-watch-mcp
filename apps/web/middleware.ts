@@ -8,6 +8,8 @@ interface SessionPayload {
   sessionVersion?: number;
 }
 
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
+
 // Edge-safe session secret resolution. Mirrors apps/web/lib/auth/session.ts
 // but does NOT touch fs (middleware runs on the edge runtime) — operators who
 // want secret-file support must also export the value as RW_SESSION_SECRET in
@@ -25,7 +27,10 @@ async function verifySessionCookie(value: string): Promise<SessionPayload | null
   const password = sessionSecret();
   if (!password) return null;
   try {
-    const data = (await unsealData(value, { password })) as SessionPayload;
+    const data = (await unsealData(value, {
+      password,
+      ttl: SESSION_TTL_SECONDS,
+    })) as SessionPayload;
     if (!data || !data.userId) return null;
     return data;
   } catch {

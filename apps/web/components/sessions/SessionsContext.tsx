@@ -49,6 +49,14 @@ export function SessionsProvider({ children }: { children: React.ReactNode }) {
   const [active, setActive] = useState<ActiveSession[]>([]);
   const [refreshToken, setRefreshToken] = useState(0);
   const sources = useRef<Map<string, EventSource>>(new Map());
+  const activeWorkspaceId = useRef<string | null | undefined>(undefined);
+
+  const clearActiveSessions = useCallback(() => {
+    const map = sources.current;
+    for (const sse of map.values()) sse.close();
+    map.clear();
+    setActive([]);
+  }, []);
 
   useEffect(() => {
     const map = sources.current;
@@ -76,6 +84,43 @@ export function SessionsProvider({ children }: { children: React.ReactNode }) {
   const bumpRefreshToken = useCallback(() => {
     setRefreshToken((n) => n + 1);
   }, []);
+
+  const refreshWorkspaceScope = useCallback(async () => {
+    try {
+      const res = await fetch("/api/account/profile", { cache: "no-store" });
+      if (!res.ok) return;
+      const profile = (await res.json()) as { activeWorkspaceId?: string | null };
+      const next = profile.activeWorkspaceId ?? null;
+      const previous = activeWorkspaceId.current;
+      activeWorkspaceId.current = next;
+      if (previous !== undefined && previous !== next) {
+        clearActiveSessions();
+        bumpRefreshToken();
+      }
+    } catch {
+      /* ignore transient auth/navigation states */
+    }
+  }, [bumpRefreshToken, clearActiveSessions]);
+
+  useEffect(() => {
+    void refreshWorkspaceScope();
+    const onFocus = () => void refreshWorkspaceScope();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void refreshWorkspaceScope();
+    };
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshWorkspaceScope();
+    }, 5000);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("rw:workspace-switched", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("rw:workspace-switched", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [refreshWorkspaceScope]);
 
   const start = useCallback(
     async ({ file, projectId }: { file: File; projectId?: string | null }) => {
@@ -211,7 +256,6 @@ export function progressPercent(session: ActiveSession): number {
   if (session.stage === "screening" && session.progress) {
     // Screening reports n/total; proportionally scale within the screening band.
     const base = STAGE_ORDER.indexOf("screening");
-    const stageBand = 1 / STAGE_ORDER.length;
     const within = session.progress.current / Math.max(session.progress.total, 1);
     return Math.min(95, ((base + within) / STAGE_ORDER.length) * 100);
   }

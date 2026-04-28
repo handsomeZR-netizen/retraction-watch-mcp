@@ -8,6 +8,7 @@ import {
   fetchUserInfo,
   generateUniqueUsername,
   getProvider,
+  parseOAuthState,
 } from "@/lib/auth/oauth";
 import { findIdentity, linkIdentity } from "@/lib/db/oauth";
 import {
@@ -55,11 +56,11 @@ export async function GET(
   const cookieStore = await cookies();
   const expected = cookieStore.get(STATE_COOKIE)?.value;
   cookieStore.delete(STATE_COOKIE);
-  const [stateValue, redirectEncoded] = stateRaw.split(":");
-  if (!expected || expected !== stateValue) {
+  const parsedState = parseOAuthState(stateRaw, expected);
+  if (!parsedState) {
     return NextResponse.redirect(`${appBaseUrl(req)}/login?error=oauth_state_mismatch`);
   }
-  const redirect = redirectEncoded ? decodeURIComponent(redirectEncoded) : "/";
+  const redirect = parsedState.redirect;
 
   try {
     const redirectUri = `${appBaseUrl(req)}/api/auth/oauth/${provider.provider}/callback`;
@@ -136,7 +137,7 @@ export async function GET(
       ip: getRequestIp(req.headers),
       userAgent: req.headers.get("user-agent"),
     });
-    return NextResponse.redirect(`${appBaseUrl(req)}${redirect.startsWith("/") ? redirect : "/"}`);
+    return NextResponse.redirect(`${appBaseUrl(req)}${redirect}`);
   } catch (err) {
     return NextResponse.redirect(
       `${appBaseUrl(req)}/login?error=oauth_${encodeURIComponent(

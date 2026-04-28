@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
 import { activeScope } from "@/lib/auth/scope";
 import { listManuscriptsForScope } from "@/lib/db/manuscripts";

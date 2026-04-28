@@ -8,12 +8,28 @@ import { getRequestIp } from "@/lib/auth/validate";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const Schema = z.object({ name: z.string().min(1).max(64) });
+const Schema = z.object({ name: z.string().trim().min(1).max(64) });
 
-export async function GET() {
+function boundedInt(value: string | null, fallback: number, min: number, max: number): number {
+  const parsed = value === null ? fallback : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.trunc(parsed)));
+}
+
+export async function GET(req: Request) {
   const auth = await requireUser();
   if ("response" in auth) return auth.response;
-  return NextResponse.json({ workspaces: listUserWorkspaces(auth.user.id) });
+  const url = new URL(req.url);
+  const all = listUserWorkspaces(auth.user.id);
+  const limitParam = url.searchParams.get("limit");
+  const limit = boundedInt(limitParam, all.length, 1, 100);
+  const offset = boundedInt(url.searchParams.get("offset"), 0, 0, Math.max(all.length, 0));
+  return NextResponse.json({
+    workspaces: all.slice(offset, offset + limit),
+    total: all.length,
+    limit,
+    offset,
+  });
 }
 
 export async function POST(req: Request) {

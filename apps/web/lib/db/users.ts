@@ -1,10 +1,9 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-} from "node:crypto";
 import { nanoid } from "nanoid";
+import {
+  decryptString,
+  encryptString,
+  isEncryptedValue,
+} from "@/lib/crypto/data-key";
 import { getAppDb } from "./app-db";
 
 export interface UserRow {
@@ -50,9 +49,6 @@ export interface UserLlmSettings {
   enableHeaderParse?: boolean;
 }
 
-const ENCRYPTED_VALUE_PREFIX = "enc:v1:";
-const DEV_SESSION_SECRET = "dev-only-rw-screen-session-secret-change-me-in-production-32bytes";
-
 export function getUserLlmSettings(user: UserRow): UserLlmSettings | null {
   if (!user.llm_settings_json) return null;
   try {
@@ -88,67 +84,6 @@ function encryptLlmSettings(value: UserLlmSettings): UserLlmSettings {
   };
 }
 
-function isEncryptedValue(value: string): boolean {
-  return value.startsWith(ENCRYPTED_VALUE_PREFIX);
-}
-
-function dataKey(): Buffer {
-  const raw = process.env.RW_DATA_KEY?.trim() ?? readFileEnv("RW_DATA_KEY_FILE");
-  if (raw) {
-    if (!/^[0-9a-fA-F]{64}$/.test(raw)) {
-      throw new Error("RW_DATA_KEY must be a 32-byte hex string");
-    }
-    return Buffer.from(raw, "hex");
-  }
-  const sessionSecret =
-    process.env.RW_SESSION_SECRET?.trim() ??
-    readFileEnv("RW_SESSION_SECRET_FILE") ??
-    DEV_SESSION_SECRET;
-  return createHash("sha256").update(sessionSecret).digest();
-}
-
-function readFileEnv(name: string): string | null {
-  const file = process.env[name]?.trim();
-  if (!file) return null;
-  try {
-    // Lazy-require to avoid pulling fs into module init when not needed.
-    const fs = require("node:fs") as typeof import("node:fs");
-    const value = fs.readFileSync(file, "utf8").trim();
-    return value || null;
-  } catch {
-    return null;
-  }
-}
-
-function encryptString(plaintext: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", dataKey(), iv);
-  const ciphertext = Buffer.concat([
-    cipher.update(plaintext, "utf8"),
-    cipher.final(),
-  ]);
-  const tag = cipher.getAuthTag();
-  return [
-    ENCRYPTED_VALUE_PREFIX.slice(0, -1),
-    iv.toString("base64url"),
-    tag.toString("base64url"),
-    ciphertext.toString("base64url"),
-  ].join(":");
-}
-
-function decryptString(encoded: string): string {
-  const parts = encoded.split(":");
-  if (parts.length !== 5 || `${parts[0]}:${parts[1]}:` !== ENCRYPTED_VALUE_PREFIX) {
-    throw new Error("invalid encrypted value");
-  }
-  const iv = Buffer.from(parts[2], "base64url");
-  const tag = Buffer.from(parts[3], "base64url");
-  const ciphertext = Buffer.from(parts[4], "base64url");
-  const decipher = createDecipheriv("aes-256-gcm", dataKey(), iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
-}
-
 export function setUserPassword(userId: string, passwordHash: string): void {
   getAppDb()
     .prepare(
@@ -175,12 +110,81 @@ export function listAllUsers(): UserRow[] {
     .all() as UserRow[];
 }
 
+export interface AdminUserRow {
+  id: string;
+  username: string;
+  display_name: string | null;
+  role: "user" | "admin";
+  created_at: string;
+  last_login_at: string | null;
+  disabled: 0 | 1;
+  avatar_seed: string | null;
+}
+
+export function listUsersForAdmin(options: {
+  search?: string | null;
+  limit?: number;
+  offset?: number;
+} = {}): AdminUserRow[] {
+  const limit = Math.max(1, Math.min(100, options.limit ?? 50));
+  const offset = Math.max(0, options.offset ?? 0);
+  const { whereSql, params } = adminUsersWhere(options.search);
+  return getAppDb()
+    .prepare(
+      `SELECT id, username, display_name, role, created_at, last_login_at, disabled, avatar_seed
+         FROM users
+        ${whereSql}
+        ORDER BY created_at DESC
+        LIMIT ? OFFSET ?`,
+    )
+    .all(...params, limit, offset) as AdminUserRow[];
+}
+
+export function countUsersForAdmin(search?: string | null): number {
+  const { whereSql, params } = adminUsersWhere(search);
+  const row = getAppDb()
+    .prepare(`SELECT COUNT(*) AS n FROM users ${whereSql}`)
+    .get(...params) as { n: number };
+  return row.n;
+}
+
+function adminUsersWhere(search?: string | null): {
+  whereSql: string;
+  params: string[];
+} {
+  const q = search?.trim().toLowerCase();
+  if (!q) return { whereSql: "", params: [] };
+  const like = `%${q}%`;
+  return {
+    whereSql:
+      "WHERE LOWER(username) LIKE ? OR LOWER(COALESCE(display_name, '')) LIKE ? OR LOWER(COALESCE(email, '')) LIKE ?",
+    params: [like, like, like],
+  };
+}
+
 export function setUserDisabled(userId: string, disabled: boolean): void {
   getAppDb()
     .prepare(
       "UPDATE users SET disabled = ?, session_version = session_version + 1 WHERE id = ?",
     )
     .run(disabled ? 1 : 0, userId);
+}
+
+export function setUserRoleForAdmin(userId: string, role: "user" | "admin"): void {
+  getAppDb()
+    .prepare("UPDATE users SET role = ?, session_version = session_version + 1 WHERE id = ?")
+    .run(role, userId);
+}
+
+export function forceLogoutUserForAdmin(userId: string): void {
+  bumpSessionVersion(userId);
+}
+
+export function countActiveAdmins(): number {
+  const row = getAppDb()
+    .prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND disabled = 0")
+    .get() as { n: number };
+  return row.n;
 }
 
 export function findUserByUsername(username: string): UserRow | null {

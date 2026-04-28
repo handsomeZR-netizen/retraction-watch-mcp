@@ -13,8 +13,10 @@ import {
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+
+const PAGE_SIZE = 25;
 
 interface WS {
   id: string;
@@ -26,19 +28,34 @@ interface WS {
 
 export default function WorkspacesPage() {
   const [list, setList] = useState<WS[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
-  async function load() {
-    const res = await fetch("/api/workspaces");
+  async function load(offset = 0) {
+    setLoading(true);
+    setError(false);
+    const res = await fetch(`/api/workspaces?limit=${PAGE_SIZE}&offset=${offset}`);
     if (!res.ok) {
       toast.error("加载失败");
+      setError(true);
+      if (offset === 0) setList([]);
+      setLoading(false);
       return;
     }
-    const j = (await res.json()) as { workspaces: WS[] };
-    setList(j.workspaces);
+    const j = (await res.json()) as {
+      workspaces: WS[];
+      total: number;
+      limit: number;
+      offset: number;
+    };
+    setList((prev) => (offset === 0 ? j.workspaces : [...(prev ?? []), ...j.workspaces]));
+    setTotal(j.total);
+    setLoading(false);
   }
 
   useEffect(() => {
-    void load();
+    void load(0);
   }, []);
 
   async function createNew() {
@@ -55,7 +72,7 @@ export default function WorkspacesPage() {
     }
     const j = (await res.json()) as { workspace: WS };
     toast.success(`已创建：${j.workspace.name}`);
-    await load();
+    await load(0);
   }
 
   return (
@@ -77,6 +94,11 @@ export default function WorkspacesPage() {
       </header>
 
       {!list && <Skeleton className="h-32 w-full" />}
+      {error && (
+        <Card className="p-8 text-center text-sm text-muted-foreground">
+          团队空间加载失败，请稍后重试。
+        </Card>
+      )}
       {list && list.length === 0 && (
         <Card className="p-12 text-center text-sm text-muted-foreground">
           还没有任何团队空间。点击右上角创建一个，或者从邀请链接加入。
@@ -115,6 +137,13 @@ export default function WorkspacesPage() {
               </Card>
             </Link>
           ))}
+          {list.length < total && (
+            <div className="pt-2 text-center">
+              <Button variant="outline" onClick={() => load(list.length)} disabled={loading}>
+                {loading ? "加载中…" : "加载更多"}
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

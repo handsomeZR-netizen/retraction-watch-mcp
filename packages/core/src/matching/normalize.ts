@@ -168,12 +168,12 @@ export function toPinyin(value: string): string {
 export function normalizeText(value: string): string {
   return value
     .normalize("NFKD")
-    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\p{M}/gu, "")
     .replace(/[‘’]/g, "'")
     .replace(/[‐-―]/g, "-")
     .replace(/[　-〿＀-￯]/g, " ")
     .toLowerCase()
-    .replace(/[^a-z0-9一-鿿]+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim()
     .replace(/\s+/g, " ");
 }

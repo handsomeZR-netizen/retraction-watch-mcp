@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ShieldStar, User } from "@phosphor-icons/react";
+import { useEffect, useState, type FormEvent } from "react";
+import { ShieldStar, SignOut, User } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { avatarUrl } from "@/lib/avatar";
@@ -22,32 +23,58 @@ interface AdminUser {
   manuscripts: number;
 }
 
+const PAGE_SIZE = 20;
+
 export function AdminUsersTable() {
   const [users, setUsers] = useState<AdminUser[] | null>(null);
-
-  async function load() {
-    const res = await fetch("/api/admin/users");
-    if (!res.ok) {
-      toast.error("加载失败");
-      return;
-    }
-    const j = (await res.json()) as { users: AdminUser[] };
-    setUsers(j.users);
-  }
+  const [total, setTotal] = useState(0);
+  const [query, setQuery] = useState("");
+  const [activeQuery, setActiveQuery] = useState("");
+  const [offset, setOffset] = useState(0);
 
   useEffect(() => {
-    void load();
-  }, []);
+    const params = new URLSearchParams({
+      limit: String(PAGE_SIZE),
+      offset: String(offset),
+    });
+    if (activeQuery) params.set("q", activeQuery);
+    void fetch(`/api/admin/users?${params.toString()}`).then(async (res) => {
+      if (!res.ok) {
+        toast.error("加载失败");
+        return;
+      }
+      const j = (await res.json()) as {
+        users: AdminUser[];
+        total: number;
+      };
+      setUsers(j.users);
+      setTotal(j.total);
+    });
+  }, [activeQuery, offset]);
 
-  async function toggleDisable(u: AdminUser, disabled: boolean) {
+  async function patchUser(u: AdminUser, body: Record<string, unknown>) {
     const res = await fetch(`/api/admin/users/${u.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ disabled }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const j = (await res.json().catch(() => ({}))) as { error?: string };
-      toast.error(j.error ?? "操作失败");
+      throw new Error(j.error ?? "操作失败");
+    }
+  }
+
+  function submitSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setOffset(0);
+    setActiveQuery(query.trim());
+  }
+
+  async function toggleDisable(u: AdminUser, disabled: boolean) {
+    try {
+      await patchUser(u, { disabled });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "操作失败");
       return;
     }
     toast.success(disabled ? "已禁用" : "已启用");
@@ -56,13 +83,51 @@ export function AdminUsersTable() {
     );
   }
 
+  async function changeRole(u: AdminUser) {
+    const role = u.role === "admin" ? "user" : "admin";
+    try {
+      await patchUser(u, { role });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "操作失败");
+      return;
+    }
+    toast.success(role === "admin" ? "已设为管理员" : "已改为普通用户");
+    setUsers((prev) =>
+      prev?.map((row) => (row.id === u.id ? { ...row, role } : row)) ?? prev,
+    );
+  }
+
+  async function forceLogout(u: AdminUser) {
+    try {
+      await patchUser(u, { forceLogout: true });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "操作失败");
+      return;
+    }
+    toast.success("已注销该用户的现有会话");
+  }
+
+  const pageStart = total === 0 ? 0 : offset + 1;
+  const pageEnd = Math.min(offset + PAGE_SIZE, total);
+
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
+      <CardHeader className="gap-4 space-y-0 sm:flex-row sm:items-center sm:justify-between">
+        <CardTitle className="flex items-center gap-2 text-base shrink-0">
           <User className="h-4 w-4" weight="duotone" />
           用户列表
         </CardTitle>
+        <form onSubmit={submitSearch} className="flex w-full gap-2 sm:max-w-sm">
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="搜索用户名、昵称或邮箱"
+            className="min-w-0"
+          />
+          <Button type="submit" variant="outline" size="sm">
+            筛选
+          </Button>
+        </form>
       </CardHeader>
       <CardContent>
         {!users && <Skeleton className="h-40 w-full" />}
@@ -104,10 +169,27 @@ export function AdminUsersTable() {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center justify-end gap-3">
                   <span className="text-xs text-muted-foreground font-mono">
                     {u.manuscripts} 份稿件
                   </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void changeRole(u)}
+                  >
+                    {u.role === "admin" ? "降为用户" : "设为管理员"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="注销会话"
+                    onClick={() => void forceLogout(u)}
+                  >
+                    <SignOut className="h-4 w-4" weight="duotone" />
+                  </Button>
                   <Switch
                     checked={!u.disabled}
                     onCheckedChange={(v) => void toggleDisable(u, !v)}
@@ -117,6 +199,33 @@ export function AdminUsersTable() {
               </li>
             ))}
           </ul>
+        )}
+        {users && (
+          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4">
+            <div className="text-xs text-muted-foreground">
+              {pageStart}-{pageEnd} / {total}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={offset === 0}
+                onClick={() => setOffset((v) => Math.max(0, v - PAGE_SIZE))}
+              >
+                上一页
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={offset + PAGE_SIZE >= total}
+                onClick={() => setOffset((v) => v + PAGE_SIZE)}
+              >
+                下一页
+              </Button>
+            </div>
+          </div>
         )}
       </CardContent>
     </Card>

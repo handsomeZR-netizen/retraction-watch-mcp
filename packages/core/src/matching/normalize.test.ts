@@ -57,6 +57,22 @@ describe("normalization", () => {
     expect(cn.surname).not.toBe("wei");
   });
 
+  it("preserves Hebrew, Arabic, and Chinese author names during tokenization", () => {
+    const hebrew = normalizeName("דוד כהן");
+    expect(hebrew.normalized).toBe("דוד כהן");
+    expect(hebrew.tokens).toEqual(["דוד", "כהן"]);
+    expect(hebrew.surname).toBe("כהן");
+
+    const arabic = normalizeName("أحمد علي");
+    expect(arabic.normalized).toBe("احمد علي");
+    expect(arabic.tokens).toEqual(["احمد", "علي"]);
+    expect(arabic.surname).toBe("علي");
+
+    const chinese = normalizeName("李雷");
+    expect(chinese.normalized).toMatch(/li\s*lei/);
+    expect(chinese.surname).toBe("li");
+  });
+
   it("strips trailing punctuation and ignores stop words in title tokens", () => {
     const tokens = titleTokens("The Use of Machine Learning for Health Outcomes.");
     expect(tokens.has("the")).toBe(false);

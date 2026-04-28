@@ -1,15 +1,20 @@
 services:
   rw-screen:
     build: .
-    image: rw-screen:0.2.0
+    image: rw-screen:0.4.0
     container_name: rw-screen
     ports:
-      - "3210:3210"
+      # In production set RW_HOST_PORT=80 (or 443 with reverse proxy) in .env
+      - "${RW_HOST_PORT:-3210}:3210"
     volumes:
       - ./data:/data
       - ./config:/config
+    env_file:
+      - .env
     environment:
       - RW_MCP_DB_PATH=/data/retraction-watch.sqlite
       - RW_SCREEN_CONFIG_DIR=/config
+      - RW_APP_DB_DIR=/config
       - RW_SCREEN_DATA_DIR=/data/manuscripts
+      - NODE_OPTIONS=--max-old-space-size=2048
     restart: unless-stopped

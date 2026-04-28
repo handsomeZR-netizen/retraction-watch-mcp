@@ -1,6 +1,6 @@
 {
   "name": "@rw/core",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "description": "Retraction Watch screening engine: matcher, normalize, repository, policy.",
   "license": "MIT",

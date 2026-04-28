@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { inferFileType } from "@rw/core";
 import { requireUser } from "@/lib/auth/guard";
 import { activeScope } from "@/lib/auth/scope";
 import { writeAudit } from "@/lib/db/audit";
@@ -13,12 +12,11 @@ import { isWorkspaceMember } from "@/lib/db/workspaces";
 import { rateLimit } from "@/lib/auth/rate-limit";
 import { getRequestIp } from "@/lib/auth/validate";
 import { deleteUpload, saveUpload } from "@/lib/store";
+import { validateUploadFile } from "@/lib/manuscripts/upload-validation";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-const MAX_BYTES = 50 * 1024 * 1024;
 
 export async function POST(req: Request) {
   const auth = await requireUser();
@@ -40,17 +38,18 @@ export async function POST(req: Request) {
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "missing file" }, { status: 400 });
   }
-  if (file.size > MAX_BYTES) {
-    return NextResponse.json({ error: "file too large (>50MB)" }, { status: 413 });
-  }
-  const fileType = inferFileType(file.name);
-  if (fileType === "unknown") {
-    return NextResponse.json({ error: "unsupported file type" }, { status: 415 });
+  const validation = await validateUploadFile(file);
+  if (!validation.ok) {
+    return NextResponse.json(
+      { error: validation.error },
+      { status: validation.status },
+    );
   }
   const projectIdRaw = formData.get("projectId");
   const projectId = typeof projectIdRaw === "string" && projectIdRaw.trim() ? projectIdRaw.trim() : null;
   const manuscriptId = randomUUID();
-  const safeName = file.name.replace(/[^A-Za-z0-9._一-鿿-]+/g, "_");
+  const safeName = validation.fileName;
+  const fileType = validation.fileType;
   const scope = activeScope(user);
   let projectToAssign: string | null = null;
   if (projectId) {
