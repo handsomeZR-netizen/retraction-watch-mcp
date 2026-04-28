@@ -28,6 +28,42 @@ function manuscriptDir(id: string): string {
   return path.join(getDataDir(), id);
 }
 
+/**
+ * Reject a path that resolves outside `baseDir`. Defends against
+ * path-traversal attacks where a stored filename or upload.json refers to
+ * `..` segments or absolute paths pointing outside the manuscript dir.
+ */
+export function assertWithinDir(targetPath: string, baseDir: string): string {
+  const resolvedBase = path.resolve(baseDir) + path.sep;
+  const resolvedTarget = path.resolve(targetPath);
+  // resolvedTarget === resolvedBase (without trailing sep) is the dir itself —
+  // never a file; reject as well.
+  if (
+    resolvedTarget !== path.resolve(baseDir) &&
+    !resolvedTarget.startsWith(resolvedBase)
+  ) {
+    throw new Error(`path traversal: ${targetPath} not within ${baseDir}`);
+  }
+  return resolvedTarget;
+}
+
+/**
+ * Sanitize a user-provided filename to a safe basename. Strips any path
+ * separators, drive letters, and `..` segments. The result is always a single
+ * leaf name suitable for joining onto a directory.
+ */
+export function sanitizeUploadFileName(fileName: string): string {
+  // Take only the trailing component, even if the user submitted a path-like
+  // string. Then replace anything that's not a letter/digit/dot/dash/underscore
+  // or CJK character with underscore. Reject empty results.
+  const leaf = path.basename(fileName.replace(/\\/g, "/"));
+  const cleaned = leaf
+    .replace(/^\.+/, "_") // leading dots
+    .replace(/[^A-Za-z0-9._一-鿿-]+/g, "_")
+    .slice(0, 200);
+  return cleaned || "upload.bin";
+}
+
 export async function saveUpload(input: {
   manuscriptId: string;
   fileName: string;
@@ -36,7 +72,8 @@ export async function saveUpload(input: {
 }): Promise<UploadRecord> {
   const dir = manuscriptDir(input.manuscriptId);
   await fs.mkdir(dir, { recursive: true });
-  const filePath = path.join(dir, input.fileName);
+  const safeName = sanitizeUploadFileName(input.fileName);
+  const filePath = assertWithinDir(path.join(dir, safeName), dir);
 
   const hash = createHash("sha256");
   let bytes = 0;
@@ -63,7 +100,7 @@ export async function saveUpload(input: {
 
   const record: UploadRecord = {
     manuscriptId: input.manuscriptId,
-    fileName: input.fileName,
+    fileName: safeName,
     fileType: input.fileType,
     bytes,
     uploadedAt: new Date().toISOString(),
@@ -76,8 +113,18 @@ export async function saveUpload(input: {
 
 export async function getUpload(manuscriptId: string): Promise<UploadRecord | null> {
   try {
-    const text = await fs.readFile(path.join(manuscriptDir(manuscriptId), "upload.json"), "utf8");
-    return JSON.parse(text) as UploadRecord;
+    const dir = manuscriptDir(manuscriptId);
+    const text = await fs.readFile(path.join(dir, "upload.json"), "utf8");
+    const record = JSON.parse(text) as UploadRecord;
+    // upload.json is written by us, but defend against tampering / accidental
+    // path drift: refuse to expose a record whose filePath escapes the
+    // manuscript's own directory.
+    try {
+      assertWithinDir(record.filePath, dir);
+    } catch {
+      return null;
+    }
+    return record;
   } catch {
     return null;
   }

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { getAppDb } from "./app-db";
 
 export type AuditAction =
@@ -40,23 +41,44 @@ export function writeAudit(input: {
 }): void {
   try {
     const detail = sanitizeAuditDetail(input.detail);
+    const ipHash = input.ip ? hashIp(input.ip) : null;
     getAppDb()
       .prepare(
-        `INSERT INTO audit_log (user_id, action, detail_json, ip, user_agent, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO audit_log (user_id, action, detail_json, ip, ip_hash, user_agent, created_at)
+         VALUES (?, ?, ?, NULL, ?, ?, ?)`,
       )
       .run(
         input.userId ?? null,
         input.action,
         detail ? JSON.stringify(detail) : null,
-        input.ip ?? null,
+        ipHash,
         input.userAgent ?? null,
         new Date().toISOString(),
       );
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.warn("[audit] failed to persist:", err);
   }
+}
+
+/**
+ * Hash a client IP for audit logs. Salted with RW_DATA_KEY (or session secret
+ * fallback) so the hash is irreversible across deployments while still letting
+ * us correlate same-IP events within one deployment.
+ */
+function hashIp(ip: string): string {
+  const salt =
+    process.env.RW_DATA_KEY ?? process.env.RW_SESSION_SECRET ?? "rw-screen-dev";
+  return createHash("sha256").update(`${salt}:${ip}`).digest("hex").slice(0, 16);
+}
+
+export function pruneAuditLog(olderThanDays: number): number {
+  const cutoff = new Date(
+    Date.now() - olderThanDays * 86_400_000,
+  ).toISOString();
+  const info = getAppDb()
+    .prepare("DELETE FROM audit_log WHERE created_at < ?")
+    .run(cutoff);
+  return info.changes;
 }
 
 function sanitizeAuditDetail(detail: unknown): Record<string, unknown> | null {

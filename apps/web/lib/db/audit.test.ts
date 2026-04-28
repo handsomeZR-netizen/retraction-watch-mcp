@@ -99,7 +99,7 @@ describe("audit allowlist sanitizer", () => {
     expect(lastDetail()).toBeNull();
   });
 
-  it("preserves null-userId rows for unauth events", () => {
+  it("preserves null-userId rows and stores a hashed ip (never the raw value)", () => {
     audit.writeAudit({
       userId: null,
       action: "login_failed",
@@ -107,9 +107,34 @@ describe("audit allowlist sanitizer", () => {
       ip: "127.0.0.1",
     });
     const row = db
-      .prepare("SELECT user_id, ip FROM audit_log ORDER BY id DESC LIMIT 1")
-      .get() as { user_id: string | null; ip: string | null };
+      .prepare("SELECT user_id, ip, ip_hash FROM audit_log ORDER BY id DESC LIMIT 1")
+      .get() as { user_id: string | null; ip: string | null; ip_hash: string | null };
     expect(row.user_id).toBeNull();
-    expect(row.ip).toBe("127.0.0.1");
+    // Raw ip column is no longer written by new code (privacy)
+    expect(row.ip).toBeNull();
+    // ip_hash is a non-empty hex string, not the original IP
+    expect(row.ip_hash).toMatch(/^[0-9a-f]{8,32}$/);
+    expect(row.ip_hash).not.toBe("127.0.0.1");
+  });
+
+  it("hashes the same ip to the same value across two writes", () => {
+    audit.writeAudit({ userId: "user-1", action: "login", ip: "10.0.0.1" });
+    audit.writeAudit({ userId: "user-1", action: "login", ip: "10.0.0.1" });
+    const rows = db
+      .prepare("SELECT ip_hash FROM audit_log ORDER BY id DESC LIMIT 2")
+      .all() as { ip_hash: string }[];
+    expect(rows[0].ip_hash).toBe(rows[1].ip_hash);
+  });
+
+  it("pruneAuditLog removes rows older than the cutoff", () => {
+    audit.writeAudit({ userId: "user-1", action: "login" });
+    db.prepare(
+      "UPDATE audit_log SET created_at = ? WHERE id = (SELECT MAX(id) FROM audit_log)",
+    ).run("2020-01-01T00:00:00.000Z");
+    audit.writeAudit({ userId: "user-1", action: "login" });
+    const removed = audit.pruneAuditLog(30);
+    expect(removed).toBe(1);
+    const remaining = db.prepare("SELECT COUNT(*) AS n FROM audit_log").get() as { n: number };
+    expect(remaining.n).toBe(1);
   });
 });

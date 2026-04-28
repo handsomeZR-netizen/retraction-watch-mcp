@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { cookies } from "next/headers";
 import { getIronSession, type IronSession, type SessionOptions } from "iron-session";
 import { findUserById, type UserRow } from "@/lib/db/users";
@@ -10,18 +11,36 @@ export interface SessionData {
 
 const DEV_SECRET = "dev-only-rw-screen-session-secret-change-me-in-production-32bytes";
 
-if (process.env.NODE_ENV === "production" && !process.env.RW_SESSION_SECRET) {
-  throw new Error("RW_SESSION_SECRET must be set in production.");
-}
-
-if (process.env.NODE_ENV !== "production" && !process.env.RW_SESSION_SECRET) {
-  // eslint-disable-next-line no-console
+/**
+ * Resolve the session secret from one of:
+ *   1. RW_SESSION_SECRET (raw value)
+ *   2. RW_SESSION_SECRET_FILE (path; read at startup; supports docker secrets)
+ *   3. dev fallback (NODE_ENV !== production only)
+ */
+function resolveSessionSecret(): string {
+  const raw = process.env.RW_SESSION_SECRET?.trim();
+  if (raw) return raw;
+  const file = process.env.RW_SESSION_SECRET_FILE?.trim();
+  if (file) {
+    try {
+      const value = fs.readFileSync(file, "utf8").trim();
+      if (value) return value;
+    } catch (err) {
+      throw new Error(`failed to read RW_SESSION_SECRET_FILE=${file}: ${err}`);
+    }
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "RW_SESSION_SECRET (or RW_SESSION_SECRET_FILE) must be set in production.",
+    );
+  }
   console.warn(
     "[auth] WARNING: RW_SESSION_SECRET is not set; using an insecure development-only session secret.",
   );
+  return DEV_SECRET;
 }
 
-const SECRET = process.env.RW_SESSION_SECRET ?? DEV_SECRET;
+const SECRET = resolveSessionSecret();
 
 const sessionOptions: SessionOptions = {
   cookieName: "rw_screen_session",

@@ -93,16 +93,31 @@ function isEncryptedValue(value: string): boolean {
 }
 
 function dataKey(): Buffer {
-  const raw = process.env.RW_DATA_KEY?.trim();
+  const raw = process.env.RW_DATA_KEY?.trim() ?? readFileEnv("RW_DATA_KEY_FILE");
   if (raw) {
     if (!/^[0-9a-fA-F]{64}$/.test(raw)) {
       throw new Error("RW_DATA_KEY must be a 32-byte hex string");
     }
     return Buffer.from(raw, "hex");
   }
-  return createHash("sha256")
-    .update(process.env.RW_SESSION_SECRET ?? DEV_SESSION_SECRET)
-    .digest();
+  const sessionSecret =
+    process.env.RW_SESSION_SECRET?.trim() ??
+    readFileEnv("RW_SESSION_SECRET_FILE") ??
+    DEV_SESSION_SECRET;
+  return createHash("sha256").update(sessionSecret).digest();
+}
+
+function readFileEnv(name: string): string | null {
+  const file = process.env[name]?.trim();
+  if (!file) return null;
+  try {
+    // Lazy-require to avoid pulling fs into module init when not needed.
+    const fs = require("node:fs") as typeof import("node:fs");
+    const value = fs.readFileSync(file, "utf8").trim();
+    return value || null;
+  } catch {
+    return null;
+  }
 }
 
 function encryptString(plaintext: string): string {

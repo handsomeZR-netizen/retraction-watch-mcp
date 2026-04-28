@@ -11,7 +11,6 @@ import {
   getManuscript,
   markManuscriptDone,
   markManuscriptError,
-  type ManuscriptRow,
 } from "@/lib/db/manuscripts";
 import { writeScreeningLog } from "@/lib/db/screening-logs";
 import { findUserById, getUserLlmSettings } from "@/lib/db/users";
@@ -43,11 +42,17 @@ const emitter = new EventEmitter();
 const states = new Map<string, ParseState>();
 const queue: ParseJob[] = [];
 let processing = false;
+let shuttingDown = false;
+let activeJob: ParseJob | null = null;
+let drainPromise: Promise<void> | null = null;
 
 export function startParseJob(input: {
   manuscriptId: string;
   user: CurrentUser;
 }): { ok: true; parseJobId: string } | { ok: false; status: number; error: string } {
+  if (shuttingDown) {
+    return { ok: false, status: 503, error: "server is shutting down" };
+  }
   const row = getManuscript(input.manuscriptId);
   if (!row || !canAccessManuscript(input.user, row)) {
     return { ok: false, status: 404, error: "manuscript not found" };
@@ -85,14 +90,57 @@ export function subscribeParseProgress(
 async function drainQueue(): Promise<void> {
   if (processing) return;
   processing = true;
-  try {
-    for (;;) {
-      const job = queue.shift();
-      if (!job) return;
-      await runParseJob(job);
+  drainPromise = (async () => {
+    try {
+      for (;;) {
+        const job = queue.shift();
+        if (!job) return;
+        activeJob = job;
+        try {
+          await runParseJob(job);
+        } finally {
+          activeJob = null;
+        }
+      }
+    } finally {
+      processing = false;
+      drainPromise = null;
     }
-  } finally {
-    processing = false;
+  })();
+  return drainPromise;
+}
+
+/**
+ * Mark the runner as shutting down: refuse new jobs, wait up to `timeoutMs`
+ * for the in-flight job to finish, then mark anything still queued or
+ * running as errored so the next process can re-acquire the lease.
+ */
+export async function gracefulDrain(timeoutMs = 30_000): Promise<void> {
+  shuttingDown = true;
+  if (!drainPromise) {
+    flushPendingAsError("server-restart");
+    return;
+  }
+  const timeout = new Promise<"timeout">((resolve) =>
+    setTimeout(() => resolve("timeout"), timeoutMs).unref?.(),
+  );
+  const outcome = await Promise.race([
+    drainPromise.then(() => "done" as const),
+    timeout,
+  ]);
+  if (outcome === "timeout") {
+    flushPendingAsError("server-restart-timeout");
+  }
+}
+
+function flushPendingAsError(reason: string): void {
+  const pending = queue.splice(0, queue.length);
+  for (const job of pending) {
+    markManuscriptError(job.manuscriptId, job.parseJobId, reason);
+  }
+  if (activeJob) {
+    markManuscriptError(activeJob.manuscriptId, activeJob.parseJobId, reason);
+    activeJob = null;
   }
 }
 
@@ -165,7 +213,6 @@ async function runParseJob(job: ParseJob): Promise<void> {
         sha256: row.sha256,
       });
     } catch (logErr) {
-      // eslint-disable-next-line no-console
       console.warn("[screening-logs] failed to persist:", logErr);
     }
 

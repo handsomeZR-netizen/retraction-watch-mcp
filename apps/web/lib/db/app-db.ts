@@ -27,6 +27,7 @@ function migrate(db: DB): void {
   if (current < 5) applyV5(db);
   if (current < 6) applyV6(db);
   if (current < 7) applyV7(db);
+  if (current < 8) applyV8(db);
 }
 
 function applyV1(db: DB): void {
@@ -245,4 +246,18 @@ function applyV7(db: DB): void {
       ON screening_logs(created_at DESC, id DESC);
     PRAGMA user_version = 7;
   `);
+}
+
+function applyV8(db: DB): void {
+  // Add ip_hash column to audit_log so we can store a privacy-preserving
+  // hash of the client IP instead of the raw value. The legacy ip column
+  // is kept for backward compatibility but is no longer written by new
+  // code; cleanup will eventually prune those rows.
+  const cols = (db.prepare("PRAGMA table_info(audit_log)").all() as { name: string }[]).map(
+    (r) => r.name,
+  );
+  if (!cols.includes("ip_hash")) {
+    db.exec("ALTER TABLE audit_log ADD COLUMN ip_hash TEXT");
+  }
+  db.exec("PRAGMA user_version = 8");
 }

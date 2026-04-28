@@ -38,23 +38,46 @@ export interface SendMailInput {
   html?: string;
 }
 
+const SEND_BACKOFF_MS = [1_000, 4_000, 16_000];
+
 export async function sendMail(input: SendMailInput): Promise<{ delivered: boolean; preview?: string }> {
   const t = init();
   const from = process.env.SMTP_FROM ?? "RW Screen <noreply@example.com>";
   if (!t) {
     // Dev fallback: print to console so flows can be tested without an SMTP server.
-    // eslint-disable-next-line no-console
     console.log(`[mailer:console] To: ${input.to}\nSubject: ${input.subject}\n\n${input.text}\n`);
     return { delivered: false, preview: input.text };
   }
-  const info = await t.sendMail({
-    from,
-    to: input.to,
-    subject: input.subject,
-    text: input.text,
-    html: input.html,
-  });
-  return { delivered: true, preview: info.messageId };
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt <= SEND_BACKOFF_MS.length; attempt += 1) {
+    try {
+      const info = await t.sendMail({
+        from,
+        to: input.to,
+        subject: input.subject,
+        text: input.text,
+        html: input.html,
+      });
+      return { delivered: true, preview: info.messageId };
+    } catch (err) {
+      lastErr = err;
+      if (attempt < SEND_BACKOFF_MS.length) {
+        const wait = SEND_BACKOFF_MS[attempt];
+        console.warn(
+          `[mailer] sendMail attempt ${attempt + 1} failed: ${describe(err)}; retry in ${wait}ms`,
+        );
+        await new Promise((r) => setTimeout(r, wait));
+      }
+    }
+  }
+  // All retries failed: do not throw — auth flows that wrote a token to the DB
+  // remain valid (admin can resend). Caller gets `delivered: false` and can log.
+  console.error(`[mailer] sendMail giving up after retries: ${describe(lastErr)}`);
+  return { delivered: false };
+}
+
+function describe(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 export function appBaseUrl(req?: Request): string {

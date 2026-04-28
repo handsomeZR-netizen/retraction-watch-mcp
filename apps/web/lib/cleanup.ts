@@ -1,11 +1,14 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getDataDir, loadConfig } from "@/lib/config";
+import { pruneAuditLog } from "@/lib/db/audit";
 import {
   deleteManuscript,
   listErroredManuscriptsOlderThan,
 } from "@/lib/db/manuscripts";
 import { deleteOldUploads } from "@/lib/store";
+
+const AUDIT_RETENTION_DAYS = 90;
 
 let started = false;
 let running = false;
@@ -29,14 +32,13 @@ async function runCleanupOnce(): Promise<void> {
     const keepHours = config.retention.keepHours;
     const removedUploads = await deleteOldUploads(keepHours);
     const removedErrors = await deleteErroredManuscripts(keepHours);
-    if (removedUploads > 0 || removedErrors > 0) {
-      // eslint-disable-next-line no-console
+    const removedAudit = pruneAuditLog(AUDIT_RETENTION_DAYS);
+    if (removedUploads > 0 || removedErrors > 0 || removedAudit > 0) {
       console.warn(
-        `[cleanup] removed uploads=${removedUploads}, errored manuscripts=${removedErrors}`,
+        `[cleanup] removed uploads=${removedUploads}, errored manuscripts=${removedErrors}, audit_log rows=${removedAudit}`,
       );
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.warn("[cleanup] failed:", err);
   } finally {
     running = false;
