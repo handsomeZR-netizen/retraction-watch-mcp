@@ -1,14 +1,17 @@
 {
   "name": "@rw/web",
-  "version": "0.2.0-dev",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "next dev -p 3210",
-    "build": "next build",
+    "build": "node scripts/build.mjs",
     "start": "next start -p 3210",
     "typecheck": "tsc --noEmit",
-    "lint": "next lint --quiet",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "lint": "eslint . --max-warnings=0",
     "seed-admin": "tsx scripts/seed-admin.ts"
   },
   "dependencies": {
@@ -24,8 +27,8 @@
     "@radix-ui/react-switch": "1.1.2",
     "@radix-ui/react-tabs": "1.1.2",
     "@radix-ui/react-tooltip": "1.1.6",
-    "@rw/core": "0.2.0-dev",
-    "@rw/ingest": "0.2.0-dev",
+    "@rw/core": "0.3.0",
+    "@rw/ingest": "0.3.0",
     "bcryptjs": "2.4.3",
     "better-sqlite3": "11.7.0",
     "class-variance-authority": "0.7.1",
@@ -45,6 +48,7 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@types/bcryptjs": "2.4.6",
     "@types/better-sqlite3": "7.6.12",
     "@types/node": "25.0.0",
@@ -53,6 +57,8 @@
     "@types/react": "19.0.7",
     "@types/react-dom": "19.0.3",
     "autoprefixer": "10.4.21",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^15.1.6",
     "postcss": "8.5.1",
     "tailwindcss": "3.4.17",
     "tsx": "4.21.0",

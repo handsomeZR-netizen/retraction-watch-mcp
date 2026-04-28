@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { canAccessManuscript } from "@/lib/auth/scope";
 import type { CurrentUser } from "@/lib/auth/session";
-import { getManuscript } from "@/lib/db/manuscripts";
+import { getManuscript, markManuscriptError } from "@/lib/db/manuscripts";
 import { hasParseState, subscribeParseProgress } from "@/lib/parse-runner";
 import { createSseStream, sseHeaders } from "@/lib/sse";
 
@@ -18,8 +18,17 @@ export function parseStreamResponse(
   // process. Either the process restarted while a job was in-flight (the
   // startup hook flips it to error) OR the row was carried over from another
   // replica. Either way, hanging the SSE forever is the worst outcome — emit
-  // a synthetic error frame and tell the client to retry via /api/parse/start.
+  // a synthetic error frame, ALSO release the dead lease in the DB so a
+  // subsequent /api/parse/start can re-acquire it (otherwise the manuscript
+  // is permanently stuck in `parsing` from the user's perspective).
   if (row.status === "parsing" && !hasParseState(manuscriptId)) {
+    if (row.parse_job_id) {
+      markManuscriptError(
+        manuscriptId,
+        row.parse_job_id,
+        "parser was interrupted; please re-run from the dashboard",
+      );
+    }
     const { stream, sink } = createSseStream();
     sink.write({
       stage: "error",

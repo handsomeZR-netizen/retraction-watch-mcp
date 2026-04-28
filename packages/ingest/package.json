@@ -1,6 +1,6 @@
 {
   "name": "@rw/ingest",
-  "version": "0.2.0-dev",
+  "version": "0.3.0",
   "type": "module",
   "description": "Manuscript ingest pipeline: PDF/Word/LaTeX extraction, metadata + references, LLM client.",
   "license": "MIT",
@@ -17,7 +17,9 @@
     "./types": "./dist/types.js",
     "./screen": "./dist/screen-manuscript.js"
   },
-  "files": ["dist/"],
+  "files": [
+    "dist/"
+  ],
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "npm run clean && tsc -p tsconfig.json",
@@ -25,7 +27,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@rw/core": "0.2.0-dev",
+    "@rw/core": "0.3.0",
     "mammoth": "1.8.0",
     "openai": "4.78.1",
     "tesseract.js": "5.1.1",

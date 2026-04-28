@@ -17,6 +17,10 @@
 const PREAMBLE_HEADERS_RE =
   /^(highlights?|graphical abstract|graphical-abstract|article info(?:rmation)?|article history)\b\s*[:：]?\s*$/i;
 const BULLET_LINE_RE = /^[•◦▪●○■□–—\-*]\s/;
+// Lines that are obviously license / permission / copyright noise — these
+// often pile up at the top of conference-style PDFs as a 5-10 line preamble.
+const NOISE_LINE_RE =
+  /(permission to make digital|to copy otherwise|all rights reserved|copyright\s+©|©\s*\d{4}|hereby grants?|under (?:a )?creative commons|conference[' ]s?\s+author|licensed under|preprint|under review|in press)/i;
 
 export interface PreambleStripResult {
   /** Lines with the preamble removed; original lines if no preamble detected. */
@@ -26,19 +30,39 @@ export interface PreambleStripResult {
 }
 
 export function stripPreambleSentinels(lines: string[]): PreambleStripResult {
-  const horizon = Math.min(lines.length, 30);
+  // First pass: skip any leading run of license/permission/copyright noise
+  // lines. Conference-paper PDFs sometimes carry a 5-50 line preamble of
+  // boilerplate before the real title; if we don't strip it the title
+  // detector runs out of horizon and returns null.
+  let firstReal = 0;
+  while (
+    firstReal < lines.length &&
+    firstReal < 200 &&
+    (NOISE_LINE_RE.test(lines[firstReal]) || lines[firstReal].length < 4)
+  ) {
+    firstReal += 1;
+  }
+  // If we skipped at least 3 obvious-noise lines, treat that as a strip.
+  const noiseStripped = firstReal >= 3;
+  let workingLines = noiseStripped ? lines.slice(firstReal) : lines;
+
+  const horizon = Math.min(workingLines.length, 30);
   let preambleStart = -1;
   for (let i = 0; i < horizon; i += 1) {
-    if (PREAMBLE_HEADERS_RE.test(lines[i])) {
+    if (PREAMBLE_HEADERS_RE.test(workingLines[i])) {
       preambleStart = i;
       break;
     }
   }
-  if (preambleStart < 0) return { lines, stripped: false };
+  if (preambleStart < 0) {
+    return { lines: workingLines, stripped: noiseStripped };
+  }
+  // Re-bind for the existing Highlights logic below.
+  lines = workingLines;
 
   // Phase 1: find the first title-like resume after the Highlights header.
   const t1 = findNextTitleResume(lines, preambleStart + 1);
-  if (t1 < 0) return { lines, stripped: false };
+  if (t1 < 0) return { lines, stripped: noiseStripped };
 
   // Phase 2: skip all bullet lines + their lowercase-prefixed continuation
   // lines that follow the highlights summary title/author. End when we either

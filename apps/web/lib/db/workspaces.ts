@@ -221,7 +221,19 @@ export function revokeInvite(token: string): void {
 
 export function deleteWorkspace(id: string): void {
   const db = getAppDb();
+  const now = new Date().toISOString();
   const tx = db.transaction(() => {
+    // Active share tokens for manuscripts in this workspace must be revoked
+    // before we sever the workspace link — otherwise an external viewer with
+    // a token can keep accessing a manuscript whose context just disappeared.
+    db.prepare(
+      `UPDATE manuscript_shares
+          SET revoked_at = ?
+        WHERE manuscript_id IN (
+                SELECT id FROM manuscripts WHERE workspace_id = ?
+              )
+          AND revoked_at IS NULL`,
+    ).run(now, id);
     // Manuscripts have no FK on workspace_id; revert them to the uploader's personal scope.
     db.prepare("UPDATE manuscripts SET workspace_id = NULL WHERE workspace_id = ?").run(id);
     // Personal-scope manuscripts cannot have assignees, so clear those too.

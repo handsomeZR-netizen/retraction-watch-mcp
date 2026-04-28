@@ -1,6 +1,6 @@
 {
   "name": "rw-screen-monorepo",
-  "version": "0.2.0-dev",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Retraction Watch screening monorepo: core engine + ingest pipeline + Next.js web app.",
@@ -17,7 +17,9 @@
     "build": "npm run build -w @rw/core && npm run build -w @rw/ingest",
     "build:web": "npm run build -w @rw/web",
     "typecheck": "npm run typecheck -w @rw/core && npm run typecheck -w @rw/ingest && npm run typecheck -w @rw/web",
-    "test": "npm run test -w @rw/core && npm run test -w @rw/ingest",
+    "test": "npm run test -w @rw/core && npm run test -w @rw/ingest && npm run test -w @rw/web",
+    "test:web": "npm run test -w @rw/web",
+    "test:e2e:web": "npm run test:e2e -w @rw/web",
     "dev:web": "npm run dev -w @rw/web",
     "dev:mcp": "npm run dev:mcp -w @rw/core",
     "dev:query": "npm run dev:query -w @rw/core",
