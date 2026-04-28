@@ -129,7 +129,7 @@ export default function HomePage() {
         </Card>
       )}
 
-      <section className="grid lg:grid-cols-[1.4fr_1fr] gap-6 items-start">
+      <section className="grid xl:grid-cols-[1.4fr_1fr] gap-6 items-start">
         <div>
           {data ? (
             <RecentList items={data.recent} />

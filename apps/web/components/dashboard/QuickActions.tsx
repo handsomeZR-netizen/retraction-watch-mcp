@@ -78,12 +78,12 @@ export function QuickActions({ role }: { role: "admin" | "user" }) {
       <header className="px-4 py-2.5 border-b border-border">
         <h2 className="text-sm font-semibold">快捷入口</h2>
       </header>
-      <div className="grid grid-cols-2 gap-px bg-border">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-px bg-border">
         {actions.map((a) => (
           <Link
             key={a.href}
             href={a.href}
-            className="bg-card hover:bg-accent/40 transition-colors p-3.5 flex items-start gap-2.5"
+            className="bg-card hover:bg-accent/40 transition-colors p-3 flex items-center gap-2.5 min-w-0"
           >
             <span
               className={cn(
@@ -93,7 +93,7 @@ export function QuickActions({ role }: { role: "admin" | "user" }) {
             >
               <a.icon className="h-4 w-4" weight="duotone" />
             </span>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="text-sm font-medium truncate">{a.label}</div>
               <div className="text-[11px] text-muted-foreground mt-0.5 truncate">
                 {a.desc}

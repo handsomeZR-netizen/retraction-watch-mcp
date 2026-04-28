@@ -57,8 +57,8 @@ export function VerdictCard({
   const m = META[verdict];
   const Icon = m.icon;
   return (
-    <div className="grid lg:grid-cols-[auto_1fr] gap-4 items-stretch">
-      <Card className="px-6 py-5 flex flex-col items-center justify-center min-w-[210px]">
+    <div className="space-y-4">
+      <Card className="px-6 py-5 flex flex-col items-center justify-center">
         <div
           className={cn(
             "grid h-14 w-14 place-items-center rounded-full",
@@ -71,12 +71,12 @@ export function VerdictCard({
           {verdict}
         </Badge>
         <div className="text-base font-medium mt-3">{m.label}</div>
-        <div className="text-xs text-muted-foreground mt-1 text-center max-w-[180px]">
+        <div className="text-xs text-muted-foreground mt-1 text-center max-w-[260px]">
           {m.sub}
         </div>
       </Card>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-4 gap-2">
         <Tile label="参考文献" value={totals.references} accent="muted" />
         <Tile
           label="确认命中"
@@ -110,11 +110,11 @@ function Tile({
     muted: "text-foreground",
   }[accent];
   return (
-    <Card className="p-4">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+    <Card className="p-3 min-w-0">
+      <div className="text-[10px] tracking-wide text-muted-foreground font-medium whitespace-nowrap overflow-hidden text-ellipsis">
         {label}
       </div>
-      <div className={cn("text-3xl font-semibold mt-1 tabular-nums", colorClass)}>
+      <div className={cn("text-2xl font-semibold mt-1 tabular-nums", colorClass)}>
         {value}
       </div>
     </Card>

@@ -175,8 +175,8 @@ export function AppSidebar() {
   }
 
   return (
-    <aside className="w-64 shrink-0 border-r border-border bg-card flex flex-col h-screen sticky top-0">
-      <div className="px-3 py-3 border-b border-border space-y-2">
+    <aside className="w-64 shrink-0 border-r border-border bg-card flex flex-col h-screen sticky top-0 overflow-hidden">
+      <div className="px-3 py-3 border-b border-border space-y-2 shrink-0">
         <Link href="/" className="flex items-center gap-2 px-1.5">
           <span
             aria-hidden
@@ -208,7 +208,7 @@ export function AppSidebar() {
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="px-2 py-2 space-y-3">
           {/* In-progress sessions */}
           {active.length > 0 && (
@@ -345,7 +345,7 @@ export function AppSidebar() {
         </div>
       </ScrollArea>
 
-      <div className="px-3 py-2 border-t border-border space-y-0.5">
+      <div className="px-3 py-2 border-t border-border space-y-0.5 shrink-0">
         <NavLink href="/" icon={House} label="首页" pathname={pathname} />
         <NavLink href="/history" icon={ClockCounterClockwise} label="历史" pathname={pathname} />
         <NavLink href="/admin" icon={ShieldStar} label="管理" pathname={pathname} adminOnly />
@@ -413,7 +413,7 @@ function ActiveSessionRow({
   const inner = (
     <div
       className={cn(
-        "px-2 py-1.5 rounded-md flex items-center gap-2 group",
+        "px-2 py-1.5 rounded-md flex items-center gap-2 group w-full",
         active ? "bg-accent" : "hover:bg-accent/40 transition-colors",
       )}
     >
@@ -426,7 +426,7 @@ function ActiveSessionRow({
             : undefined
         }
       />
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 overflow-hidden">
         <div className="text-xs font-medium truncate">{session.fileName}</div>
         {session.status !== "done" && session.status !== "error" && (
           <div className="mt-1 h-1 bg-muted rounded-full overflow-hidden">
@@ -448,7 +448,7 @@ function ActiveSessionRow({
           e.stopPropagation();
           onDismiss();
         }}
-        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity shrink-0"
         title="从列表移除"
       >
         <XCircle className="h-3.5 w-3.5" weight="bold" />
@@ -456,7 +456,9 @@ function ActiveSessionRow({
     </div>
   );
   return isLink ? (
-    <Link href={`/result/${session.manuscriptId}`}>{inner}</Link>
+    <Link href={`/result/${session.manuscriptId}`} className="block w-full min-w-0">
+      {inner}
+    </Link>
   ) : (
     inner
   );
