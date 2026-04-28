@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { nanoid } from "nanoid";
 import type { OAuthProvider } from "@/lib/db/oauth";
 
@@ -105,6 +105,48 @@ export function newState(): string {
   return randomBytes(16).toString("hex");
 }
 
+export function safeLocalRedirect(value: string | null): string | null {
+  if (!value) return null;
+  if (/[\u0000-\u001f\u007f\\]/.test(value)) return null;
+  try {
+    const base = new URL("https://rw-screen.local");
+    const parsed = new URL(value, base);
+    if (parsed.origin !== base.origin) return null;
+    if (!parsed.pathname.startsWith("/")) return null;
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return null;
+  }
+}
+
+export function buildOAuthState(state: string, redirect: string | null): string {
+  const safeRedirect = safeLocalRedirect(redirect);
+  return state + (safeRedirect ? `:${encodeURIComponent(safeRedirect)}` : "");
+}
+
+export function parseOAuthState(
+  raw: string,
+  expected: string | undefined,
+): { redirect: string } | null {
+  const delimiter = raw.indexOf(":");
+  const stateValue = delimiter === -1 ? raw : raw.slice(0, delimiter);
+  const redirectEncoded = delimiter === -1 ? "" : raw.slice(delimiter + 1);
+  if (!expected || !timingSafeStringEqual(expected, stateValue)) return null;
+  if (!redirectEncoded) return { redirect: "/" };
+  try {
+    return { redirect: safeLocalRedirect(decodeURIComponent(redirectEncoded)) ?? "/" };
+  } catch {
+    return { redirect: "/" };
+  }
+}
+
+function timingSafeStringEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
+}
+
 export function authorizeUrl(
   provider: OAuthProvider,
   config: ProviderConfig,
@@ -116,7 +158,7 @@ export function authorizeUrl(
     client_id: config.clientId,
     redirect_uri: redirectUri,
     scope: config.scope,
-    state: state + (redirect ? `:${encodeURIComponent(redirect)}` : ""),
+    state: buildOAuthState(state, redirect),
     response_type: "code",
   });
   if (provider === "google") {
