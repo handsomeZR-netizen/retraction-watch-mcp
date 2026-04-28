@@ -31,6 +31,9 @@ export interface LlmRefsBatchOptions {
 }
 
 const DEFAULT_BATCH_SIZE = 20;
+export const MAX_LLM_CALLS_PER_MANUSCRIPT = 10;
+const LLM_TIMEOUT_MS = 60_000;
+const MAX_REF_CHARS = 800;
 
 export class DeepseekLlmClient {
   private readonly client: OpenAI;
@@ -51,6 +54,7 @@ export class DeepseekLlmClient {
     this.client = new OpenAI({
       apiKey: config.apiKey,
       baseURL: config.baseUrl,
+      timeout: LLM_TIMEOUT_MS,
     });
   }
 
@@ -71,22 +75,25 @@ export class DeepseekLlmClient {
 
   async parseHeader(headerText: string): Promise<ManuscriptHeaderMeta | null> {
     if (!headerText.trim()) return null;
-    this.stats.headerCalls += 1;
+    if (!this.reserveCall("header")) return null;
     try {
-      const response = await this.client.chat.completions.create({
-        model: this.config.model,
-        temperature: 0,
-        max_tokens: 1500,
-        messages: [
-          { role: "system", content: HEADER_PARSE_SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: `请抽取以下论文首页元数据：\n\n${headerText.slice(0, 6000)}`,
-          },
-        ],
-        tools: [HEADER_PARSE_TOOL],
-        tool_choice: { type: "function", function: { name: "emit_header" } },
-      });
+      const response = await this.client.chat.completions.create(
+        {
+          model: this.config.model,
+          temperature: 0,
+          max_tokens: 1500,
+          messages: [
+            { role: "system", content: HEADER_PARSE_SYSTEM_PROMPT },
+            {
+              role: "user",
+              content: `请抽取以下论文首页元数据：\n\n${sanitizeLlmText(headerText).slice(0, 6000)}`,
+            },
+          ],
+          tools: [HEADER_PARSE_TOOL],
+          tool_choice: { type: "function", function: { name: "emit_header" } },
+        },
+        { timeout: LLM_TIMEOUT_MS },
+      );
       const args = readToolArgs(response);
       if (!args) {
         this.stats.failures += 1;
@@ -103,27 +110,34 @@ export class DeepseekLlmClient {
     refs: RawReference[],
     maxRetries: number,
   ): Promise<StructuredReference[]> {
-    const userContent =
-      "请抽取以下参考文献。\n\n" +
-      refs
-        .map((r) => `<ref index="${r.index}">${r.raw}</ref>`)
-        .join("\n");
+    const userContent = JSON.stringify({
+      task: "extract_references",
+      references: refs.map((r) => ({
+        index: r.index,
+        raw: sanitizeReferenceText(r.raw),
+      })),
+    });
 
     let attempt = 0;
     while (attempt <= maxRetries) {
-      this.stats.refsCalls += 1;
+      if (!this.reserveCall("refs")) {
+        return fallbackRefs(refs);
+      }
       try {
-        const response = await this.client.chat.completions.create({
-          model: this.config.model,
-          temperature: 0,
-          max_tokens: 4000,
-          messages: [
-            { role: "system", content: REFS_EXTRACTION_SYSTEM_PROMPT },
-            { role: "user", content: userContent },
-          ],
-          tools: [REFS_EXTRACTION_TOOL],
-          tool_choice: { type: "function", function: { name: "emit_references" } },
-        });
+        const response = await this.client.chat.completions.create(
+          {
+            model: this.config.model,
+            temperature: 0,
+            max_tokens: 4000,
+            messages: [
+              { role: "system", content: REFS_EXTRACTION_SYSTEM_PROMPT },
+              { role: "user", content: userContent },
+            ],
+            tools: [REFS_EXTRACTION_TOOL],
+            tool_choice: { type: "function", function: { name: "emit_references" } },
+          },
+          { timeout: LLM_TIMEOUT_MS },
+        );
         const args = readToolArgs(response);
         if (!args || !Array.isArray((args as { references?: unknown[] }).references)) {
           throw new Error("Empty or malformed tool response");
@@ -135,21 +149,50 @@ export class DeepseekLlmClient {
         attempt += 1;
         if (attempt > maxRetries) {
           this.stats.failures += 1;
-          return refs.map<StructuredReference>((r) => ({
-            raw: r.raw,
-            title: null,
-            authors: [],
-            year: null,
-            doi: null,
-            pmid: null,
-            journal: null,
-            source: "llm",
-          }));
+          return fallbackRefs(refs);
         }
       }
     }
     return [];
   }
+
+  private reserveCall(kind: "refs" | "header"): boolean {
+    if (this.stats.refsCalls + this.stats.headerCalls >= MAX_LLM_CALLS_PER_MANUSCRIPT) {
+      this.stats.failures += 1;
+      return false;
+    }
+    if (kind === "refs") {
+      this.stats.refsCalls += 1;
+    } else {
+      this.stats.headerCalls += 1;
+    }
+    return true;
+  }
+}
+
+function sanitizeReferenceText(value: string): string {
+  return sanitizeLlmText(value).slice(0, MAX_REF_CHARS);
+}
+
+function sanitizeLlmText(value: string): string {
+  return value
+    .replaceAll("</ref>", "")
+    .replaceAll("<|im_end|>", "")
+    .replaceAll("<|im_start|>", "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
+}
+
+function fallbackRefs(refs: RawReference[]): StructuredReference[] {
+  return refs.map<StructuredReference>((r) => ({
+    raw: r.raw,
+    title: null,
+    authors: [],
+    year: null,
+    doi: null,
+    pmid: null,
+    journal: null,
+    source: "llm",
+  }));
 }
 
 function readToolArgs(response: unknown): unknown {

@@ -40,14 +40,16 @@ export function createEmailToken(input: {
 }
 
 export function consumeEmailToken(token: string, kind: EmailTokenKind): EmailTokenRow | null {
-  const row = getAppDb()
-    .prepare("SELECT * FROM email_tokens WHERE token = ? AND kind = ?")
-    .get(token, kind) as EmailTokenRow | undefined;
-  if (!row) return null;
-  if (row.used_at) return null;
-  if (Date.parse(row.expires_at) < Date.now()) return null;
-  getAppDb()
-    .prepare("UPDATE email_tokens SET used_at = ? WHERE token = ?")
-    .run(new Date().toISOString(), token);
-  return row;
+  return (
+    (getAppDb()
+      .prepare(
+        `UPDATE email_tokens
+         SET used_at = ?
+         WHERE token = ? AND kind = ? AND used_at IS NULL AND expires_at >= ?
+         RETURNING *`,
+      )
+      .get(new Date().toISOString(), token, kind, new Date().toISOString()) as
+      | EmailTokenRow
+      | undefined) ?? null
+  );
 }

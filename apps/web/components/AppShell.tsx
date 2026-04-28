@@ -50,41 +50,49 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Auth not yet known: render header-only fallback so login redirect works.
+  // Private route: always mount SessionsProvider so children that call
+  // useSessions() never throw, regardless of auth-check state.
+  return (
+    <SessionsProvider>
+      <PrivateLayout authed={authed}>{children}</PrivateLayout>
+    </SessionsProvider>
+  );
+}
+
+function PrivateLayout({
+  authed,
+  children,
+}: {
+  authed: boolean | null;
+  children: React.ReactNode;
+}) {
+  // While auth check is in flight, render a minimal frame.
   if (authed === null) {
     return (
       <div className="relative flex min-h-screen flex-col">
         <Header />
-        <main className="flex-1 max-w-6xl w-full mx-auto px-6 py-10">
-          {children}
-        </main>
+        <main className="flex-1 max-w-6xl w-full mx-auto px-6 py-10">{children}</main>
       </div>
     );
   }
-
-  // Unauthenticated on a private route: hand back to children (middleware
-  // already redirected to /login on server side; this is just a fallback).
+  // Unauthenticated on a private route: middleware already redirected to /login;
+  // this is just a fallback while the redirect propagates.
   if (!authed) {
     return <>{children}</>;
   }
-
   return (
-    <SessionsProvider>
-      <div className="flex min-h-screen">
-        <AppSidebar />
-        <div className="flex-1 flex flex-col min-w-0">
-          <Header sidebarMode />
-          <main className="flex-1 w-full mx-auto px-6 py-8 max-w-5xl">
-            {children}
-          </main>
-          <footer className="border-t border-border/40">
-            <div className="max-w-5xl mx-auto px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-muted-foreground">
-              <span>© RW Screen · 仅辅助筛查，不作为学术不端裁定的终审依据</span>
-              <span className="font-mono">v0.2.0-dev</span>
-            </div>
-          </footer>
-        </div>
+    <div className="flex min-h-screen">
+      <AppSidebar />
+      <div className="flex-1 flex flex-col min-w-0">
+        <Header sidebarMode />
+        <main className="flex-1 w-full mx-auto px-6 py-8 max-w-5xl">{children}</main>
+        <footer className="border-t border-border/40">
+          <div className="max-w-5xl mx-auto px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-muted-foreground">
+            <span>© RW Screen · 仅辅助筛查，不作为学术不端裁定的终审依据</span>
+            <span className="font-mono">v0.2.0-dev</span>
+          </div>
+        </footer>
       </div>
-    </SessionsProvider>
+    </div>
   );
 }

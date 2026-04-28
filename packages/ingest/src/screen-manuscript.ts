@@ -170,7 +170,7 @@ export async function screenManuscript(
   }
 
   const totals = countTotals(screened, screenedAuthors);
-  const verdict = decideVerdict(totals);
+  const verdict = decideVerdict(totals, extracted.warnings);
 
   const result: ManuscriptScreenResult = {
     manuscriptId,
@@ -274,7 +274,7 @@ function countTotals(
   return totals;
 }
 
-function decideVerdict(totals: ReturnType<typeof countTotals>): ManuscriptVerdict {
+function decideVerdict(totals: ReturnType<typeof countTotals>, warnings: string[] = []): ManuscriptVerdict {
   if (totals.confirmed > 0 || totals.authorsConfirmed > 0) return "FAIL";
   if (
     totals.likely > 0 ||
@@ -283,5 +283,6 @@ function decideVerdict(totals: ReturnType<typeof countTotals>): ManuscriptVerdic
     totals.authorsPossible > 0
   )
     return "REVIEW";
+  if (warnings.includes("text_extraction_empty") && totals.references === 0) return "REVIEW";
   return "PASS";
 }

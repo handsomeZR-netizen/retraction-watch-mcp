@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { requireAdmin } from "@/lib/auth/guard";
+import { getRequestIp } from "@/lib/auth/validate";
 import { loadConfig, publicConfig, saveConfig } from "@/lib/config";
+import { writeAudit } from "@/lib/db/audit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -29,11 +32,15 @@ const SaveSchema = z.object({
 });
 
 export async function GET() {
+  const auth = await requireAdmin();
+  if ("response" in auth) return auth.response;
   const config = await loadConfig();
   return NextResponse.json(publicConfig(config));
 }
 
 export async function POST(req: Request) {
+  const auth = await requireAdmin();
+  if ("response" in auth) return auth.response;
   let payload: unknown;
   try {
     payload = await req.json();
@@ -52,6 +59,16 @@ export async function POST(req: Request) {
     llm: { ...current.llm, ...(parsed.data.llm ?? {}) },
     ocr: { ...current.ocr, ...(parsed.data.ocr ?? {}) },
     retention: { ...current.retention, ...(parsed.data.retention ?? {}) },
+  });
+  writeAudit({
+    userId: auth.user.id,
+    action: "change_settings",
+    detail: {
+      kind: "settings.update",
+      fields: Object.keys(parsed.data),
+    },
+    ip: getRequestIp(req.headers),
+    userAgent: req.headers.get("user-agent"),
   });
   return NextResponse.json(publicConfig(next));
 }

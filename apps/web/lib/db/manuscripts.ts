@@ -19,6 +19,7 @@ export interface ManuscriptRow {
   error: string | null;
   project_id: string | null;
   archived: number;
+  parse_job_id: string | null;
 }
 
 export function setManuscriptProject(id: string, projectId: string | null): void {
@@ -59,6 +60,32 @@ export function insertManuscript(row: {
     );
 }
 
+export function createManuscriptOrFindDuplicate(row: {
+  id: string;
+  userId: string;
+  workspaceId: string | null;
+  fileName: string;
+  fileType: string;
+  bytes: number;
+  sha256?: string | null;
+}): { manuscriptId: string; deduped: boolean; existing: ManuscriptRow | null } {
+  const db = getAppDb();
+  const tx = db.transaction(() => {
+    const existing = row.sha256
+      ? findDoneManuscriptBySha256(
+          { userId: row.userId, workspaceId: row.workspaceId },
+          row.sha256,
+        )
+      : null;
+    if (existing) {
+      return { manuscriptId: existing.id, deduped: true, existing };
+    }
+    insertManuscript(row);
+    return { manuscriptId: row.id, deduped: false, existing: null };
+  });
+  return tx();
+}
+
 export function findDoneManuscriptBySha256(
   scope: { userId: string; workspaceId: string | null },
   sha256: string,
@@ -79,18 +106,19 @@ export function findDoneManuscriptBySha256(
 
 export function markManuscriptDone(input: {
   id: string;
+  parseJobId: string;
   verdict: "PASS" | "REVIEW" | "FAIL";
   totals: unknown;
   metadataTitle: string | null;
   policyVersion: string;
   resultPath: string;
   generatedAt: string;
-}): void {
-  getAppDb()
+}): boolean {
+  const info = getAppDb()
     .prepare(
-      `UPDATE manuscripts SET status='done', verdict=?, totals_json=?, metadata_title=?,
+      `UPDATE manuscripts SET status='done', parse_job_id=NULL, verdict=?, totals_json=?, metadata_title=?,
         policy_version=?, result_path=?, generated_at=?, error=NULL
-       WHERE id=?`,
+       WHERE id=? AND parse_job_id=?`,
     )
     .run(
       input.verdict,
@@ -100,13 +128,27 @@ export function markManuscriptDone(input: {
       input.resultPath,
       input.generatedAt,
       input.id,
+      input.parseJobId,
     );
+  return info.changes > 0;
 }
 
-export function markManuscriptError(id: string, message: string): void {
-  getAppDb()
-    .prepare("UPDATE manuscripts SET status='error', error=? WHERE id=?")
-    .run(message, id);
+export function markManuscriptError(id: string, parseJobId: string, message: string): boolean {
+  const info = getAppDb()
+    .prepare("UPDATE manuscripts SET status='error', parse_job_id=NULL, error=? WHERE id=? AND parse_job_id=?")
+    .run(message, id, parseJobId);
+  return info.changes > 0;
+}
+
+export function acquireParseLease(id: string, parseJobId: string): boolean {
+  const info = getAppDb()
+    .prepare(
+      `UPDATE manuscripts
+       SET parse_job_id = ?, status = 'parsing', error = NULL
+       WHERE id = ? AND (parse_job_id IS NULL OR status != 'parsing')`,
+    )
+    .run(parseJobId, id);
+  return info.changes > 0;
 }
 
 export function getManuscript(id: string): ManuscriptRow | null {

@@ -51,6 +51,12 @@ describe("normalization", () => {
     expect(en.surname).toBe(cn.tokens.includes("zhang") ? "zhang" : en.surname);
   });
 
+  it("uses surname-first order for Chinese names", () => {
+    const cn = normalizeName("王伟");
+    expect(cn.surname).toBe("wang");
+    expect(cn.surname).not.toBe("wei");
+  });
+
   it("strips trailing punctuation and ignores stop words in title tokens", () => {
     const tokens = titleTokens("The Use of Machine Learning for Health Outcomes.");
     expect(tokens.has("the")).toBe(false);

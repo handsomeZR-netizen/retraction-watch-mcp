@@ -5,9 +5,11 @@ import { requireUser } from "@/lib/auth/guard";
 import { activeScope } from "@/lib/auth/scope";
 import { writeAudit } from "@/lib/db/audit";
 import {
-  findDoneManuscriptBySha256,
-  insertManuscript,
+  createManuscriptOrFindDuplicate,
+  setManuscriptProject,
 } from "@/lib/db/manuscripts";
+import { getProject } from "@/lib/db/projects";
+import { isWorkspaceMember } from "@/lib/db/workspaces";
 import { getRequestIp } from "@/lib/auth/validate";
 import { saveUpload } from "@/lib/store";
 
@@ -38,39 +40,25 @@ export async function POST(req: Request) {
   const projectId = typeof projectIdRaw === "string" && projectIdRaw.trim() ? projectIdRaw.trim() : null;
   const manuscriptId = randomUUID();
   const safeName = file.name.replace(/[^A-Za-z0-9._一-鿿-]+/g, "_");
+  const scope = activeScope(user);
+  let projectToAssign: string | null = null;
+  if (projectId) {
+    const project = getProject(projectId);
+    if (!project) return NextResponse.json({ error: "project not found" }, { status: 404 });
+    if (!canAssignProjectToScope(project, scope, user.id)) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    projectToAssign = project.id;
+  }
+
   const record = await saveUpload({
     manuscriptId,
     fileName: safeName,
     fileType,
     body: file.stream(),
   });
-  const scope = activeScope(user);
 
-  if (record.sha256) {
-    const existing = findDoneManuscriptBySha256(scope, record.sha256);
-    if (existing) {
-      writeAudit({
-        userId: user.id,
-        action: "upload",
-        detail: {
-          manuscriptId: existing.id,
-          deduped: true,
-          fileName: safeName,
-          sha256: record.sha256,
-          workspaceId: scope.workspaceId,
-        },
-        ip: getRequestIp(req.headers),
-        userAgent: req.headers.get("user-agent"),
-      });
-      return NextResponse.json({
-        ...record,
-        manuscriptId: existing.id,
-        deduped: true,
-      });
-    }
-  }
-
-  insertManuscript({
+  const created = createManuscriptOrFindDuplicate({
     id: manuscriptId,
     userId: user.id,
     workspaceId: scope.workspaceId,
@@ -79,13 +67,29 @@ export async function POST(req: Request) {
     bytes: record.bytes,
     sha256: record.sha256,
   });
-  if (projectId) {
-    const { setManuscriptProject } = await import("@/lib/db/manuscripts");
-    const { getProject } = await import("@/lib/db/projects");
-    const project = getProject(projectId);
-    if (project && (project.workspace_id ?? null) === (scope.workspaceId ?? null)) {
-      setManuscriptProject(manuscriptId, project.id);
-    }
+  if (created.deduped && created.existing) {
+    writeAudit({
+      userId: user.id,
+      action: "upload",
+      detail: {
+        manuscriptId: created.existing.id,
+        deduped: true,
+        fileName: safeName,
+        sha256: record.sha256,
+        workspaceId: scope.workspaceId,
+      },
+      ip: getRequestIp(req.headers),
+      userAgent: req.headers.get("user-agent"),
+    });
+    return NextResponse.json({
+      ...record,
+      manuscriptId: created.existing.id,
+      deduped: true,
+    });
+  }
+
+  if (projectToAssign) {
+    setManuscriptProject(manuscriptId, projectToAssign);
   }
   writeAudit({
     userId: user.id,
@@ -102,4 +106,15 @@ export async function POST(req: Request) {
     userAgent: req.headers.get("user-agent"),
   });
   return NextResponse.json(record);
+}
+
+function canAssignProjectToScope(
+  project: { owner_id: string; workspace_id: string | null },
+  scope: { workspaceId: string | null },
+  userId: string,
+): boolean {
+  if (scope.workspaceId) {
+    return project.workspace_id === scope.workspaceId && isWorkspaceMember(scope.workspaceId, userId) !== null;
+  }
+  return project.workspace_id === null && project.owner_id === userId;
 }

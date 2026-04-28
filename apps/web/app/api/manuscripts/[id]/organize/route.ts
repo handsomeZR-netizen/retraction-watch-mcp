@@ -3,7 +3,8 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth/guard";
 import { canAccessManuscript } from "@/lib/auth/scope";
 import { getManuscript, setManuscriptArchived, setManuscriptProject } from "@/lib/db/manuscripts";
-import { getProject } from "@/lib/db/projects";
+import { getProject, type ProjectRow } from "@/lib/db/projects";
+import { isWorkspaceMember } from "@/lib/db/workspaces";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -43,6 +44,9 @@ export async function POST(
       if ((project.workspace_id ?? null) !== (row.workspace_id ?? null)) {
         return NextResponse.json({ error: "project scope mismatch" }, { status: 400 });
       }
+      if (!canUseProject(auth.user.id, project)) {
+        return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      }
       setManuscriptProject(id, project.id);
     }
   }
@@ -50,4 +54,11 @@ export async function POST(
     setManuscriptArchived(id, parsed.data.archived);
   }
   return NextResponse.json({ ok: true });
+}
+
+function canUseProject(userId: string, project: ProjectRow): boolean {
+  if (project.workspace_id) {
+    return isWorkspaceMember(project.workspace_id, userId) !== null;
+  }
+  return project.owner_id === userId;
 }

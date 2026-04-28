@@ -25,6 +25,7 @@ function migrate(db: DB): void {
   if (current < 3) applyV3(db);
   if (current < 4) applyV4(db);
   if (current < 5) applyV5(db);
+  if (current < 6) applyV6(db);
 }
 
 function applyV1(db: DB): void {
@@ -226,4 +227,13 @@ function applyV5(db: DB): void {
     CREATE INDEX IF NOT EXISTS idx_manuscripts_archived ON manuscripts(archived, uploaded_at DESC);
     PRAGMA user_version = 5;
   `);
+}
+
+function applyV6(db: DB): void {
+  const cols = (db.prepare("PRAGMA table_info(manuscripts)").all() as { name: string }[]).map(
+    (r) => r.name,
+  );
+  if (!cols.includes("parse_job_id")) db.exec("ALTER TABLE manuscripts ADD COLUMN parse_job_id TEXT");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_manuscripts_parse_job ON manuscripts(parse_job_id)");
+  db.exec("PRAGMA user_version = 6");
 }

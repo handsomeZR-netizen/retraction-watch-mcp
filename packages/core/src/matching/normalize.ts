@@ -241,7 +241,8 @@ function buildName(
 ): NormalizedName {
   const normalized = normalizeText(basis);
   const tokens = normalized.split(" ").filter(Boolean);
-  const surname = tokens.at(-1) ?? "";
+  const allTokensCjk = tokens.length > 0 && tokens.every((token) => /^[一-鿿]+$/.test(token));
+  const surname = isChinese || allTokensCjk ? (tokens[0] ?? "") : (tokens.at(-1) ?? "");
   const initials = tokens.map((token) => token[0] ?? "").join("");
   const signature = [surname, initials].filter(Boolean).join(":");
   const reversed = tokens.length > 1 ? [...tokens].reverse().join(" ") : normalized;

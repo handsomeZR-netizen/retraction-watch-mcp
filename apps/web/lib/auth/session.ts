@@ -8,21 +8,20 @@ export interface SessionData {
   sessionVersion?: number;
 }
 
-const SECRET =
-  process.env.RW_SESSION_SECRET ??
-  // dev fallback only — production must set the env var; this default is logged once below
-  "dev-only-rw-screen-session-secret-change-me-in-production-32bytes";
+const DEV_SECRET = "dev-only-rw-screen-session-secret-change-me-in-production-32bytes";
 
-if (
-  process.env.NODE_ENV === "production" &&
-  !process.env.RW_SESSION_SECRET
-) {
-  // Surface clearly at boot if running production without secret.
+if (process.env.NODE_ENV === "production" && !process.env.RW_SESSION_SECRET) {
+  throw new Error("RW_SESSION_SECRET must be set in production.");
+}
+
+if (process.env.NODE_ENV !== "production" && !process.env.RW_SESSION_SECRET) {
   // eslint-disable-next-line no-console
   console.warn(
-    "[auth] RW_SESSION_SECRET is not set; falling back to insecure dev secret. Set a 32+ character random value in production.",
+    "[auth] WARNING: RW_SESSION_SECRET is not set; using an insecure development-only session secret.",
   );
 }
+
+const SECRET = process.env.RW_SESSION_SECRET ?? DEV_SECRET;
 
 const sessionOptions: SessionOptions = {
   cookieName: "rw_screen_session",

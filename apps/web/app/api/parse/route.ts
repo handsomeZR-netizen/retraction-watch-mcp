@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
@@ -9,6 +10,7 @@ import { getRepository } from "@/lib/repository";
 import { getUpload, saveResult } from "@/lib/store";
 import { createSseStream, sseHeaders } from "@/lib/sse";
 import {
+  acquireParseLease,
   getManuscript,
   markManuscriptDone,
   markManuscriptError,
@@ -38,6 +40,10 @@ export async function GET(req: Request) {
   const upload = await getUpload(manuscriptId);
   if (!upload) {
     return NextResponse.json({ error: "manuscript file missing" }, { status: 404 });
+  }
+  const parseJobId = randomUUID();
+  if (!acquireParseLease(manuscriptId, parseJobId)) {
+    return NextResponse.json({ error: "manuscript is already parsing" }, { status: 409 });
   }
 
   const config = await loadConfig();
@@ -86,6 +92,7 @@ export async function GET(req: Request) {
       const resultPath = path.dirname(upload.filePath);
       markManuscriptDone({
         id: manuscriptId,
+        parseJobId,
         verdict: result.verdict,
         totals: result.totals,
         metadataTitle: result.metadata.title,
@@ -116,7 +123,7 @@ export async function GET(req: Request) {
       sink.close();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      markManuscriptError(manuscriptId, msg);
+      markManuscriptError(manuscriptId, parseJobId, msg);
       sink.write({ stage: "error", message: msg });
       sink.close();
     }

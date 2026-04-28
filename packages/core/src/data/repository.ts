@@ -111,53 +111,68 @@ export class RetractionWatchRepository {
   }
 
   findCandidateRecords(input: ScreenPersonInput, noticeTypes: string[], limit: number): RwRecord[] {
-    const ids = new Set<string>();
+    const hardIds: string[] = [];
+    const softIds: string[] = [];
+    const seen = new Set<string>();
     const normalizedName = normalizeName(input.name);
     const normalizedDoi = normalizeDoi(input.doi);
     const normalizedPmid = normalizePmid(input.pmid);
+    const addHard = (recordId: string) => {
+      if (seen.has(recordId)) return;
+      seen.add(recordId);
+      hardIds.push(recordId);
+    };
+    const addSoft = (recordId: string) => {
+      if (seen.has(recordId)) return;
+      seen.add(recordId);
+      softIds.push(recordId);
+    };
 
     if (normalizedDoi) {
       for (const row of this.getIdsByIndexedValue("doi", normalizedDoi, noticeTypes, 200)) {
-        ids.add(row.record_id);
+        addHard(row.record_id);
       }
     }
 
     if (normalizedPmid) {
       for (const row of this.getIdsByIndexedValue("pmid", normalizedPmid, noticeTypes, 200)) {
-        ids.add(row.record_id);
+        addHard(row.record_id);
       }
     }
 
     if (normalizedName.normalized) {
       const exactValues = normalizedName.variants;
       for (const row of this.getIdsByAuthorExact(exactValues, noticeTypes, 200)) {
-        ids.add(row.record_id);
+        addSoft(row.record_id);
       }
 
       if (normalizedName.signature) {
         for (const row of this.getIdsByAuthorSignature(normalizedName.signature, noticeTypes, 300)) {
-          ids.add(row.record_id);
+          addSoft(row.record_id);
         }
       }
 
       if (normalizedName.surname) {
         for (const row of this.getIdsByAuthorSurname(normalizedName.surname, noticeTypes, 500)) {
-          ids.add(row.record_id);
+          addSoft(row.record_id);
         }
       }
     }
 
-    if (ids.size === 0 && input.institution) {
+    if (seen.size === 0 && input.institution) {
       const normalizedInstitution = normalizeText(input.institution);
       const tokens = normalizedInstitution.split(" ").filter((token) => token.length > 3).slice(0, 3);
       for (const token of tokens) {
         for (const row of this.getIdsByInstitutionToken(token, noticeTypes, 100)) {
-          ids.add(row.record_id);
+          addSoft(row.record_id);
         }
       }
     }
 
-    return this.getRecordsByIds([...ids], noticeTypes, Math.max(limit * 8, 100));
+    const hardRecords = this.getRecordsByIds(hardIds, noticeTypes, hardIds.length);
+    const softLimit = Math.max(limit * 8, 100);
+    const softRecords = this.getRecordsByIds(softIds, noticeTypes, softLimit);
+    return [...hardRecords, ...softRecords].slice(0, Math.max(limit, hardRecords.length));
   }
 
   findReferenceCandidates(
@@ -351,7 +366,10 @@ export class RetractionWatchRepository {
        LIMIT ?`,
       [...uniqueIds, ...params, limit],
     );
-    return rows.map(mapRecord);
+    const order = new Map(uniqueIds.map((id, index) => [id, index]));
+    return rows
+      .sort((left, right) => (order.get(left.record_id) ?? 0) - (order.get(right.record_id) ?? 0))
+      .map(mapRecord);
   }
 }
 

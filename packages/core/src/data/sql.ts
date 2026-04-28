@@ -22,8 +22,7 @@ export class SqlDatabase {
 }
 
 export async function openSqliteFile(dbPath: string): Promise<SqlDatabase> {
-  const handle = new Database(dbPath, { readonly: false, fileMustExist: true });
-  handle.pragma("journal_mode = WAL");
+  const handle = new Database(dbPath, { readonly: true, fileMustExist: true });
   handle.pragma("foreign_keys = ON");
   return new SqlDatabase(handle);
 }

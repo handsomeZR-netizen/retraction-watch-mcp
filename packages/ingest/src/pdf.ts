@@ -39,11 +39,17 @@ export async function extractPdf(
   if (text.replace(/\s+/g, "").length < 200 && options.ocrFallback) {
     const fallback = await options.ocrFallback(buffer).catch(() => null);
     if (fallback) {
-      ocrUsed = true;
-      pages = fallback.pages.length > 0 ? fallback.pages : pages;
-      text = fallback.fullText || text;
-      warnings.push("Used OCR fallback because direct text extraction returned little text.");
+      warnings.push(...fallback.warnings);
+      if (fallback.fullText.replace(/\s+/g, "").length > 0) {
+        ocrUsed = true;
+        pages = fallback.pages.length > 0 ? fallback.pages : pages;
+        text = fallback.fullText || text;
+        warnings.push("Used OCR fallback because direct text extraction returned little text.");
+      }
     }
+  }
+  if (text.replace(/\s+/g, "").length < 200) {
+    warnings.push("text_extraction_empty");
   }
 
   return {
