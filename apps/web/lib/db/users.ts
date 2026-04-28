@@ -4,6 +4,7 @@ import {
   createHash,
   randomBytes,
 } from "node:crypto";
+import fs from "node:fs";
 import { nanoid } from "nanoid";
 import { getAppDb } from "./app-db";
 
@@ -101,22 +102,26 @@ function dataKey(): Buffer {
     return Buffer.from(raw, "hex");
   }
   const sessionSecret =
-    process.env.RW_SESSION_SECRET?.trim() ??
-    readFileEnv("RW_SESSION_SECRET_FILE") ??
-    DEV_SESSION_SECRET;
-  return createHash("sha256").update(sessionSecret).digest();
+    process.env.RW_SESSION_SECRET?.trim() ?? readFileEnv("RW_SESSION_SECRET_FILE");
+  if (sessionSecret) {
+    return createHash("sha256").update(sessionSecret).digest();
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "LLM settings encryption requires RW_DATA_KEY or RW_SESSION_SECRET (or *_FILE) in production",
+    );
+  }
+  return createHash("sha256").update(DEV_SESSION_SECRET).digest();
 }
 
 function readFileEnv(name: string): string | null {
   const file = process.env[name]?.trim();
   if (!file) return null;
   try {
-    // Lazy-require to avoid pulling fs into module init when not needed.
-    const fs = require("node:fs") as typeof import("node:fs");
     const value = fs.readFileSync(file, "utf8").trim();
     return value || null;
-  } catch {
-    return null;
+  } catch (err) {
+    throw new Error(`failed to read ${name}=${file}: ${err}`);
   }
 }
 
