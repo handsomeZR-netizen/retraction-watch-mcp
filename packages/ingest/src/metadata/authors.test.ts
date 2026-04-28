@@ -95,3 +95,38 @@ describe("extractAuthors integration", () => {
     expect(authors[2].affiliation).toMatch(/Beihua University/);
   });
 });
+
+describe("RTL author parsing", () => {
+  it("splits an Arabic byline on Arabic comma + ASCII comma", () => {
+    const lines = [
+      "تحليل البيانات الكبيرة في الرعاية الصحية",
+      "محمد علي، أحمد حسن, سارة إبراهيم",
+      "Department of Computer Science, Cairo University",
+    ];
+    const names = parseRawNames(lines);
+    expect(names).toContain("محمد علي");
+    expect(names).toContain("أحمد حسن");
+    expect(names).toContain("سارة إبراهيم");
+    // Department line must NOT yield a name
+    expect(names.every((n) => !/Department/.test(n))).toBe(true);
+  });
+
+  it("splits a Hebrew byline on Hebrew comma + 'ו' conjunction", () => {
+    const lines = [
+      "ניתוח נתונים גדולים בבריאות",
+      "דוד כהן, מיכאל לוי ו רחל ישראלי",
+      "Faculty of Computer Science, Hebrew University",
+    ];
+    const names = parseRawNames(lines);
+    expect(names).toContain("דוד כהן");
+    expect(names).toContain("מיכאל לוי");
+    expect(names).toContain("רחל ישראלי");
+  });
+
+  it("ignores RTL lines that lack any RTL letters (defensive)", () => {
+    const names = parseRawNames(["Alice Smith, Bob Jones"]);
+    // Latin-only line still flows through the Latin path.
+    expect(names).toContain("Alice Smith");
+    expect(names).toContain("Bob Jones");
+  });
+});

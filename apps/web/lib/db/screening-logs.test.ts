@@ -176,6 +176,80 @@ describe("screening-logs stats", () => {
   });
 });
 
+describe("screening-logs FTS5 search", () => {
+  it("supports prefix matching across file_name / title / authors_json", () => {
+    insertAt("p1", "2026-04-01T00:00:00.000Z");
+    db.prepare("UPDATE screening_logs SET title = ? WHERE id = ?").run(
+      "Distillation methods for low-resource neural translation",
+      "p1",
+    );
+    insertAt("p2", "2026-04-02T00:00:00.000Z");
+    db.prepare("UPDATE screening_logs SET authors_json = ? WHERE id = ?").run(
+      JSON.stringify([{ name: "Maqsoom Ahsen" }]),
+      "p2",
+    );
+    insertAt("p3", "2026-04-03T00:00:00.000Z");
+    db.prepare("UPDATE screening_logs SET file_name = ? WHERE id = ?").run(
+      "lora-finetune.pdf",
+      "p3",
+    );
+
+    // Prefix on a title token
+    expect(logs.listScreeningLogs({ search: "neural", limit: 50 }).map((r) => r.id))
+      .toEqual(["p1"]);
+    // Prefix on an author token (the `*` suffix in toFtsQuery enables this)
+    expect(logs.listScreeningLogs({ search: "maqs", limit: 50 }).map((r) => r.id))
+      .toEqual(["p2"]);
+    // Prefix on a filename token
+    expect(logs.listScreeningLogs({ search: "lora", limit: 50 }).map((r) => r.id))
+      .toEqual(["p3"]);
+    // Multi-word query AND-matches across columns
+    expect(
+      logs
+        .listScreeningLogs({ search: "neural translation", limit: 50 })
+        .map((r) => r.id),
+    ).toEqual(["p1"]);
+  });
+
+  it("scales to 1000+ rows under 200ms (FTS5 index, not LIKE scan)", () => {
+    const insertOne = db.prepare(
+      `INSERT INTO screening_logs (id, user_id, workspace_id, scope, file_name, file_type, bytes, sha256, title, authors_json, affiliations_json, emails_json, verdict, refs_total, refs_confirmed, refs_likely, refs_possible, authors_confirmed, authors_likely, authors_possible, hit_summary_json, llm_calls, policy_version, created_at)
+       VALUES (?, 'user-1', NULL, 'personal', ?, 'pdf', 1, NULL, ?, '[]', NULL, NULL, 'PASS', 0,0,0,0,0,0,0,NULL,0,'p',?)`,
+    );
+    db.transaction(() => {
+      for (let i = 0; i < 1000; i += 1) {
+        insertOne.run(
+          `bulk-${i}`,
+          `bulk_${i}.pdf`,
+          i === 500 ? "the unique needle title" : `paper number ${i}`,
+          `2026-04-01T00:00:${String(i % 60).padStart(2, "0")}.000Z`,
+        );
+      }
+    })();
+    const t0 = performance.now();
+    const hits = logs.listScreeningLogs({ search: "needle", limit: 50 });
+    const elapsed = performance.now() - t0;
+    expect(hits.map((r) => r.id)).toEqual(["bulk-500"]);
+    expect(elapsed).toBeLessThan(200);
+  });
+
+  it("handles FTS5-meta characters in user query without parser errors", () => {
+    insertAt("safe", "2026-04-04T00:00:00.000Z");
+    db.prepare("UPDATE screening_logs SET title = ? WHERE id = ?").run(
+      "regular paper title",
+      "safe",
+    );
+    // Quotes / parens / minus / colon are all FTS5 syntax. The toFtsQuery
+    // helper must escape them so user input doesn't trip the parser.
+    expect(() =>
+      logs.listScreeningLogs({ search: 'foo "bar" -baz (qux)', limit: 50 }),
+    ).not.toThrow();
+    expect(() =>
+      logs.listScreeningLogs({ search: "title: regular", limit: 50 }),
+    ).not.toThrow();
+  });
+});
+
 describe("screening-logs writeScreeningLog", () => {
   it("hides authors with verdict=no_match from hit_summary", () => {
     logs.writeScreeningLog({

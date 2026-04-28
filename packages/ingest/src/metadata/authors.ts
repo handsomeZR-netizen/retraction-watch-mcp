@@ -107,6 +107,56 @@ export function sliceAuthorBlock(lines: string[]): string[] {
   return block;
 }
 
+// Arabic block (incl. supplement / extended A) + Hebrew block. Used to detect
+// RTL-dominant lines so we can use script-appropriate tokenization (no
+// uppercase concept, different conjunction words).
+const RTL_CHAR_RE = /[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/;
+
+function rtlCharFraction(line: string): number {
+  if (!line) return 0;
+  let count = 0;
+  for (const ch of line) {
+    if (RTL_CHAR_RE.test(ch)) count += 1;
+  }
+  return count / line.length;
+}
+
+function isRtlDominantLine(line: string): boolean {
+  // Stripped of common Latin punctuation/whitespace, ≥40% of remaining chars
+  // are in Arabic/Hebrew blocks → treat as RTL line.
+  const stripped = line.replace(/[\s.,;:()\-–—'"`،؛٫]/g, "");
+  if (stripped.length < 4) return false;
+  let count = 0;
+  for (const ch of stripped) {
+    if (RTL_CHAR_RE.test(ch)) count += 1;
+  }
+  return count / stripped.length >= 0.4;
+}
+
+function splitRtlNames(line: string): string[] {
+  // Arabic comma U+060C (،), Hebrew/Arabic conjunctions (و / ו "and"),
+  // ASCII comma, semicolon. Drop tokens with no RTL letters at all.
+  const segs = line
+    .split(/[,;،؛]| و | ו /u)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return segs.filter((s) => RTL_CHAR_RE.test(s));
+}
+
+function isPlausibleRtlName(seg: string): boolean {
+  // RTL names typically 2-4 space-separated tokens, each ≥2 letters.
+  const tokens = seg.split(/\s+/).filter(Boolean);
+  if (tokens.length < 1 || tokens.length > 6) return false;
+  if (seg.length < 3 || seg.length > 80) return false;
+  // At least 4 RTL letters total; reject lines that are mostly Latin (those
+  // belong on the Latin path).
+  let rtl = 0;
+  for (const ch of seg) {
+    if (RTL_CHAR_RE.test(ch)) rtl += 1;
+  }
+  return rtl >= 4;
+}
+
 export function parseRawNames(blockLines: string[]): string[] {
   const collected: string[] = [];
   for (const rawLine of blockLines) {
@@ -122,6 +172,19 @@ export function parseRawNames(blockLines: string[]): string[] {
     if (/^\d/.test(rawLine)) continue;
     if (/^[A-Z][a-z]+\s+(Brain|Research|Labs?|Inc\.?|Corp(\.|oration)?|AI)$/i.test(rawLine)) continue;
     if (ORG_STOPWORD_RE.test(rawLine)) continue;
+
+    // RTL-dominant lines (Arabic / Hebrew bylines) take a separate path —
+    // the Latin-script "must start with capital letter" rule rejects them
+    // entirely because Arabic/Hebrew have no uppercase concept.
+    if (isRtlDominantLine(rawLine)) {
+      for (const seg of splitRtlNames(rawLine)) {
+        const cleaned = cleanNameToken(seg);
+        if (cleaned && isPlausibleRtlName(cleaned)) {
+          collected.push(cleaned);
+        }
+      }
+      continue;
+    }
 
     if (looksLikeNameLine(rawLine)) {
       const segs = splitNameSegments(rawLine);
