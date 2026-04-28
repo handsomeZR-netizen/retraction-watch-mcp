@@ -49,7 +49,11 @@ function stripLatex(text: string): string {
     .replace(/\\(begin|end)\{[^}]+\}/g, "")
     .replace(/\\[a-zA-Z*]+\s*(\[[^\]]*\])?\s*(\{[^{}]*\})?/g, " ")
     .replace(/[{}~]/g, " ")
-    .replace(/\s+/g, " ")
+    // Collapse horizontal whitespace, but preserve newlines so the metadata
+    // extractor can still find a title/author block by line.
+    .replace(/[ \t]+/g, " ")
+    .replace(/[ \t]*\n[ \t]*/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
