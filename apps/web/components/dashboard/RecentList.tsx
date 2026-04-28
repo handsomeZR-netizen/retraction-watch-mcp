@@ -59,8 +59,8 @@ export function RecentList({ items }: { items: Item[] }) {
               className="px-4 py-3 flex items-center gap-3 hover:bg-accent/40 transition-colors"
             >
               <StatusIcon item={it} />
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate">
+              <div className="flex-1 min-w-0 max-w-[44rem]">
+                <div className="text-sm font-medium truncate" title={it.title ?? it.fileName}>
                   {it.title ?? it.fileName}
                 </div>
                 <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-2">
