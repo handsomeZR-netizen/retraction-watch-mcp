@@ -1,6 +1,11 @@
 "use client";
 
-import { ShieldCheck, ShieldSlash, ShieldWarning, UsersThree } from "@phosphor-icons/react";
+import {
+  ShieldCheck,
+  ShieldSlash,
+  ShieldWarning,
+  UsersThree,
+} from "@phosphor-icons/react";
 import type { AuthorScreenResult } from "@rw/core";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -16,19 +21,22 @@ export function AuthorSummaryCard({ authors }: Props) {
   let likely = 0;
   let possible = 0;
   let clean = 0;
-  for (const a of authors) {
+  // Track each hit's original index so we can deep-link via #author-N anchor.
+  const hits: { result: AuthorScreenResult; index: number }[] = [];
+  authors.forEach((a, i) => {
     if (a.verdict === "confirmed") confirmed += 1;
     else if (a.verdict === "likely_match") likely += 1;
     else if (a.verdict === "possible_match") possible += 1;
     else clean += 1;
-  }
+    if (a.verdict !== "no_match") hits.push({ result: a, index: i });
+  });
   const reviewable = likely + possible;
-  const hits = authors.filter(
-    (a) =>
-      a.verdict === "confirmed" ||
-      a.verdict === "likely_match" ||
-      a.verdict === "possible_match",
-  );
+  const hitCount = confirmed + reviewable;
+
+  const summaryLine = hitCount === 0
+    ? `已比对 ${total} 位作者，全部未在 Retraction Watch 库中发现撤稿记录。`
+    : `${total} 位作者中，${hitCount} 位曾出现在 Retraction Watch 库中` +
+      (confirmed > 0 ? `（${confirmed} 位确认）` : "") + "。";
 
   return (
     <Card>
@@ -39,6 +47,7 @@ export function AuthorSummaryCard({ authors }: Props) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
+        <div className="text-xs text-muted-foreground">{summaryLine}</div>
         <div className="grid grid-cols-4 gap-2">
           <Tile label="已比对" value={total} accent="muted" />
           <Tile
@@ -54,23 +63,30 @@ export function AuthorSummaryCard({ authors }: Props) {
           <Tile label="干净" value={clean} accent="success" />
         </div>
         {hits.length > 0 ? (
-          <ul className="text-xs space-y-1.5">
-            {hits.slice(0, 4).map((a, i) => (
-              <li key={i} className="flex items-start gap-2">
-                <HitIcon verdict={a.verdict} />
-                <span className="flex-1 min-w-0">
-                  <span className="font-medium text-foreground">{a.author.name}</span>
-                  {a.matchedRecord?.title && (
-                    <span className="text-muted-foreground">
-                      {" "}
-                      · {truncate(a.matchedRecord.title, 80)}
+          <ul className="text-xs space-y-1">
+            {hits.slice(0, 4).map(({ result: a, index }) => (
+              <li key={index}>
+                <a
+                  href={`#author-${index}`}
+                  className="flex items-start gap-2 px-2 py-1.5 -mx-2 rounded hover:bg-accent/50 transition-colors"
+                >
+                  <HitIcon verdict={a.verdict} />
+                  <span className="flex-1 min-w-0">
+                    <span className="font-medium text-foreground">
+                      {a.author.name}
                     </span>
-                  )}
-                </span>
+                    {a.matchedRecord?.title && (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {truncate(a.matchedRecord.title, 80)}
+                      </span>
+                    )}
+                  </span>
+                </a>
               </li>
             ))}
             {hits.length > 4 && (
-              <li className="text-[11px] text-muted-foreground italic">
+              <li className="text-[11px] text-muted-foreground italic px-2">
                 还有 {hits.length - 4} 位作者命中，详见下方稿件作者列表。
               </li>
             )}

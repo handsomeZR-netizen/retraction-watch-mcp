@@ -90,6 +90,10 @@ export default async function ResultPage({
         <VerdictCard verdict={result.verdict} totals={result.totals} />
       </Card>
 
+      {result.screenedAuthors && result.screenedAuthors.length > 0 && (
+        <AuthorSummaryCard authors={result.screenedAuthors} />
+      )}
+
       {result.metadata.authors.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
@@ -99,78 +103,73 @@ export default async function ResultPage({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid sm:grid-cols-2 gap-3">
-              {result.metadata.authors.map((author, i) => {
-                const initial =
-                  author.name?.trim()?.charAt(0).toUpperCase() ?? "?";
-                const screen = result.screenedAuthors?.[i];
-                const isHit =
-                  screen &&
-                  (screen.verdict === "confirmed" ||
-                    screen.verdict === "likely_match" ||
-                    screen.verdict === "possible_match");
-                return (
-                  <div
-                    key={i}
-                    className={
-                      "flex items-start gap-3 px-3 py-2.5 rounded-md border bg-card " +
-                      (screen?.verdict === "confirmed"
-                        ? "border-destructive/40 bg-destructive/[0.03]"
-                        : isHit
-                          ? "border-warning/40 bg-warning/[0.03]"
-                          : "border-border/60")
-                    }
-                  >
-                    <span className="grid h-9 w-9 place-items-center rounded-full bg-muted text-foreground text-sm font-semibold shrink-0">
-                      {initial}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-medium truncate">
-                          {author.name}
-                        </span>
-                        {screen && <AuthorScreenBadge result={screen} />}
+            <ul className="space-y-2">
+              {sortAuthorsByHit(result.metadata.authors, result.screenedAuthors).map(
+                ({ author, screen, originalIndex: i }) => {
+                  const initial =
+                    author.name?.trim()?.charAt(0).toUpperCase() ?? "?";
+                  const isConfirmed = screen?.verdict === "confirmed";
+                  const isReview =
+                    screen?.verdict === "likely_match" ||
+                    screen?.verdict === "possible_match";
+                  return (
+                    <li
+                      id={`author-${i}`}
+                      key={i}
+                      className={
+                        "flex items-start gap-3 px-3 py-2.5 rounded-md border bg-card border-l-4 scroll-mt-24 " +
+                        (isConfirmed
+                          ? "border-destructive/40 border-l-destructive bg-destructive/[0.03]"
+                          : isReview
+                            ? "border-warning/40 border-l-warning bg-warning/[0.03]"
+                            : "border-border/60 border-l-border")
+                      }
+                    >
+                      <span className="grid h-9 w-9 place-items-center rounded-full bg-muted text-foreground text-sm font-semibold shrink-0">
+                        {initial}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium">{author.name}</span>
+                          {screen && <AuthorScreenBadge result={screen} />}
+                        </div>
+                        {author.affiliation && (
+                          <div className="text-xs text-muted-foreground truncate">
+                            {author.affiliation}
+                          </div>
+                        )}
+                        {(author.email || author.orcid) && (
+                          <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
+                            {author.email && (
+                              <a
+                                href={`mailto:${author.email}`}
+                                className="inline-flex items-center gap-1 hover:text-foreground"
+                              >
+                                <Envelope className="h-3 w-3" weight="duotone" />
+                                {author.email}
+                              </a>
+                            )}
+                            {author.orcid && (
+                              <a
+                                href={`https://orcid.org/${author.orcid}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 hover:text-foreground"
+                              >
+                                ORCID {author.orcid}
+                                <ArrowSquareOut className="h-3 w-3" />
+                              </a>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      {author.affiliation && (
-                        <div className="text-xs text-muted-foreground truncate">
-                          {author.affiliation}
-                        </div>
-                      )}
-                      {(author.email || author.orcid) && (
-                        <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
-                          {author.email && (
-                            <a
-                              href={`mailto:${author.email}`}
-                              className="inline-flex items-center gap-1 hover:text-foreground"
-                            >
-                              <Envelope className="h-3 w-3" weight="duotone" />
-                              {author.email}
-                            </a>
-                          )}
-                          {author.orcid && (
-                            <a
-                              href={`https://orcid.org/${author.orcid}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 hover:text-foreground"
-                            >
-                              ORCID {author.orcid}
-                              <ArrowSquareOut className="h-3 w-3" />
-                            </a>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                    </li>
+                  );
+                },
+              )}
+            </ul>
           </CardContent>
         </Card>
-      )}
-
-      {result.screenedAuthors && result.screenedAuthors.length > 0 && (
-        <AuthorSummaryCard authors={result.screenedAuthors} />
       )}
 
       <ReferenceTable entries={result.screenedReferences} />
@@ -262,4 +261,31 @@ function Stat({
       <span className="font-mono font-medium text-foreground">{value}</span>
     </li>
   );
+}
+
+// Sort authors so screening hits surface first, but preserve original index
+// for anchor jumps (id="author-N" matches metadata.authors index).
+function sortAuthorsByHit(
+  authors: import("@rw/core").ManuscriptAuthor[],
+  screens: import("@rw/core").AuthorScreenResult[] | undefined,
+) {
+  const rank = (v: import("@rw/core").MatchVerdict | undefined): number => {
+    switch (v) {
+      case "confirmed":
+        return 0;
+      case "likely_match":
+        return 1;
+      case "possible_match":
+        return 2;
+      default:
+        return 3;
+    }
+  };
+  return authors
+    .map((author, originalIndex) => ({
+      author,
+      originalIndex,
+      screen: screens?.[originalIndex],
+    }))
+    .sort((a, b) => rank(a.screen?.verdict) - rank(b.screen?.verdict));
 }
