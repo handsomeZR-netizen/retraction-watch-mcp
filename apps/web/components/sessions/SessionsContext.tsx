@@ -34,6 +34,7 @@ interface SessionsContextValue {
 const SessionsContext = createContext<SessionsContextValue | null>(null);
 
 const STAGE_ORDER = [
+  "queued",
   "uploaded",
   "text_extracted",
   "metadata_extracted",
@@ -87,6 +88,7 @@ export function SessionsProvider({ children }: { children: React.ReactNode }) {
         status: "uploading",
       };
       setActive((prev) => [seedSession, ...prev]);
+      let activeId = placeholderId;
 
       try {
         const formData = new FormData();
@@ -99,6 +101,7 @@ export function SessionsProvider({ children }: { children: React.ReactNode }) {
           deduped?: boolean;
         };
         // Replace placeholder with the real manuscriptId.
+        activeId = json.manuscriptId;
         setActive((prev) =>
           prev.map((s) =>
             s.manuscriptId === placeholderId
@@ -118,8 +121,15 @@ export function SessionsProvider({ children }: { children: React.ReactNode }) {
         }
 
         update(json.manuscriptId, { status: "parsing", stage: "uploaded" });
+        const startRes = await fetch("/api/parse/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ manuscriptId: json.manuscriptId }),
+        });
+        if (!startRes.ok) throw new Error(await startRes.text());
+
         const sse = new EventSource(
-          `/api/parse?manuscriptId=${encodeURIComponent(json.manuscriptId)}`,
+          `/api/parse/stream?manuscriptId=${encodeURIComponent(json.manuscriptId)}`,
         );
         sources.current.set(json.manuscriptId, sse);
 
@@ -159,16 +169,18 @@ export function SessionsProvider({ children }: { children: React.ReactNode }) {
           }
         };
         sse.onerror = () => {
-          update(json.manuscriptId, { status: "error", error: "SSE 连接断开" });
+          update(json.manuscriptId, {
+            status: "parsing",
+            message: "进度连接断开，解析任务仍在后台运行",
+          });
           sse.close();
           sources.current.delete(json.manuscriptId);
-          bumpRefreshToken();
         };
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         setActive((prev) =>
           prev.map((s) =>
-            s.manuscriptId === placeholderId
+            s.manuscriptId === activeId || s.manuscriptId === placeholderId
               ? { ...s, status: "error", error: msg }
               : s,
           ),

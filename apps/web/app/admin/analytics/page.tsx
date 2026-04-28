@@ -46,6 +46,7 @@ interface Resp {
   stats: { total: number; pass: number; review: number; fail: number; last30d: number };
   limit: number;
   offset: number;
+  nextCursor: string | null;
 }
 
 const VERDICT_FILTERS: Array<{ key: "PASS" | "REVIEW" | "FAIL"; label: string; color: string }> = [
@@ -63,7 +64,13 @@ export default function AnalyticsPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [page, setPage] = useState(0);
+  const [cursors, setCursors] = useState<string[]>([""]);
   const limit = 50;
+
+  const resetPagination = useCallback(() => {
+    setPage(0);
+    setCursors([""]);
+  }, []);
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -72,9 +79,10 @@ export default function AnalyticsPage() {
     if (from) params.set("from", new Date(from).toISOString());
     if (to) params.set("to", new Date(to + "T23:59:59").toISOString());
     params.set("limit", String(limit));
-    params.set("offset", String(page * limit));
+    const cursor = cursors[page];
+    if (cursor) params.set("cursor", cursor);
     return params.toString();
-  }, [verdicts, search, from, to, page]);
+  }, [verdicts, search, from, to, page, cursors]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -105,7 +113,7 @@ export default function AnalyticsPage() {
       else next.add(v);
       return next;
     });
-    setPage(0);
+    resetPagination();
   }
 
   function exportLink(format: "json" | "csv" | "ndjson") {
@@ -170,11 +178,13 @@ export default function AnalyticsPage() {
           <Input
             type="search"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              resetPagination();
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
-                setPage(0);
-                void load();
+                resetPagination();
               }
             }}
             placeholder="搜索 文件名 / 标题 / 作者"
@@ -201,7 +211,7 @@ export default function AnalyticsPage() {
             value={from}
             onChange={(e) => {
               setFrom(e.target.value);
-              setPage(0);
+              resetPagination();
             }}
             className="h-7 text-xs w-36"
           />
@@ -211,7 +221,7 @@ export default function AnalyticsPage() {
             value={to}
             onChange={(e) => {
               setTo(e.target.value);
-              setPage(0);
+              resetPagination();
             }}
             className="h-7 text-xs w-36"
           />
@@ -327,8 +337,16 @@ export default function AnalyticsPage() {
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={page >= totalPages - 1}
-                onClick={() => setPage((p) => p + 1)}
+                disabled={!data.nextCursor}
+                onClick={() => {
+                  if (!data.nextCursor) return;
+                  setCursors((prev) => {
+                    const next = prev.slice(0, page + 1);
+                    next[page + 1] = data.nextCursor ?? "";
+                    return next;
+                  });
+                  setPage((p) => p + 1);
+                }}
               >
                 下一页
               </Button>

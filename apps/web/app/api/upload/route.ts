@@ -10,6 +10,7 @@ import {
 } from "@/lib/db/manuscripts";
 import { getProject } from "@/lib/db/projects";
 import { isWorkspaceMember } from "@/lib/db/workspaces";
+import { rateLimit } from "@/lib/auth/rate-limit";
 import { getRequestIp } from "@/lib/auth/validate";
 import { saveUpload } from "@/lib/store";
 
@@ -23,6 +24,16 @@ export async function POST(req: Request) {
   const auth = await requireUser();
   if ("response" in auth) return auth.response;
   const { user } = auth;
+  const limited = rateLimit(`upload:${user.id}`, {
+    limit: 30,
+    windowMs: 60 * 60_000,
+  });
+  if (!limited.allowed) {
+    return NextResponse.json(
+      { error: "请求过于频繁，请稍后再试" },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(limited.retryAfterMs / 1000)) } },
+    );
+  }
 
   const formData = await req.formData();
   const file = formData.get("file");

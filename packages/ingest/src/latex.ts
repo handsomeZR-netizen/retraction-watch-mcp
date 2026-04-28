@@ -2,6 +2,10 @@ import path from "node:path";
 import { extractDoi, extractYear } from "@rw/core";
 import type { ExtractedDocument, StructuredReference } from "./types.js";
 
+const ZIP_MAX_ENTRIES = 200;
+const ZIP_MAX_ENTRY_BYTES = 10 * 1024 * 1024;
+const ZIP_MAX_TOTAL_BYTES = 50 * 1024 * 1024;
+
 export async function extractLatex(
   buffer: Buffer,
   fileName: string,
@@ -149,9 +153,41 @@ async function unzipToMemory(
     const out: { name: string; text: string }[] = [];
     yauzl.fromBuffer(buffer, { lazyEntries: true }, (err, zip) => {
       if (err || !zip) return reject(err ?? new Error("zip open failed"));
+      let entries = 0;
+      let totalUncompressed = 0;
+      let settled = false;
+      const fail = (reason: string) => {
+        if (settled) return;
+        settled = true;
+        zip.close();
+        reject(new Error(`zip-archive-limit-exceeded: ${reason}`));
+      };
       zip.on("entry", (entry) => {
+        if (settled) return;
+        entries += 1;
+        if (entries > ZIP_MAX_ENTRIES) {
+          fail("max entries exceeded");
+          return;
+        }
+        if (isUnsafeZipEntryName(entry.fileName)) {
+          fail("unsafe entry path");
+          return;
+        }
+        if (path.extname(entry.fileName).toLowerCase() === ".zip") {
+          fail("nested zip not allowed");
+          return;
+        }
         if (/\/$/.test(entry.fileName)) {
           zip.readEntry();
+          return;
+        }
+        if (entry.uncompressedSize > ZIP_MAX_ENTRY_BYTES) {
+          fail("max entry bytes exceeded");
+          return;
+        }
+        totalUncompressed += entry.uncompressedSize;
+        if (totalUncompressed > ZIP_MAX_TOTAL_BYTES) {
+          fail("max total bytes exceeded");
           return;
         }
         const ext = path.extname(entry.fileName).toLowerCase();
@@ -160,25 +196,49 @@ async function unzipToMemory(
           return;
         }
         zip.openReadStream(entry, (e, stream) => {
+          if (settled) return;
           if (e || !stream) {
-            zip.readEntry();
+            reject(e ?? new Error(`zip stream open failed: ${entry.fileName}`));
             return;
           }
           const chunks: Buffer[] = [];
-          stream.on("data", (c) => chunks.push(c));
+          let bytes = 0;
+          stream.on("data", (c: Buffer) => {
+            bytes += c.byteLength;
+            if (bytes > ZIP_MAX_ENTRY_BYTES) {
+              fail("max entry bytes exceeded");
+              stream.destroy();
+              return;
+            }
+            chunks.push(c);
+          });
           stream.on("end", () => {
+            if (settled) return;
             out.push({
               name: entry.fileName,
               text: Buffer.concat(chunks).toString("utf8"),
             });
             zip.readEntry();
           });
-          stream.on("error", () => zip.readEntry());
+          stream.on("error", reject);
         });
       });
-      zip.on("end", () => resolve(out));
+      zip.on("end", () => {
+        if (settled) return;
+        settled = true;
+        resolve(out);
+      });
       zip.on("error", reject);
       zip.readEntry();
     });
   });
+}
+
+function isUnsafeZipEntryName(fileName: string): boolean {
+  const normalized = fileName.replace(/\\/g, "/");
+  return (
+    normalized.split("/").includes("..") ||
+    path.posix.isAbsolute(normalized) ||
+    path.win32.isAbsolute(fileName)
+  );
 }

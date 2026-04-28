@@ -4,19 +4,23 @@ import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Database as DB } from "better-sqlite3";
 import type * as Manuscripts from "./manuscripts";
+import type * as Users from "./users";
 
 let db: DB;
 let manuscripts: typeof Manuscripts;
+let users: typeof Users;
 let tmpDir: string;
 
 beforeAll(async () => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rw-web-db-"));
   process.env.RW_APP_DB_DIR = tmpDir;
+  process.env.RW_DATA_KEY = "a".repeat(64);
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-04-28T00:00:00.000Z"));
 
   const appDb = await import("./app-db");
   manuscripts = await import("./manuscripts");
+  users = await import("./users");
   db = appDb.getAppDb();
 });
 
@@ -116,5 +120,58 @@ describe("manuscript sha256 dedup", () => {
       .prepare("SELECT COUNT(*) AS n FROM manuscripts WHERE sha256 = 'same-sha'")
       .get() as { n: number };
     expect(count.n).toBe(1);
+  });
+});
+
+describe("listManuscriptsByUser archived defaults", () => {
+  it("hides archived manuscripts unless explicitly requested", () => {
+    manuscripts.insertManuscript({
+      id: "m-visible",
+      userId: "user-1",
+      workspaceId: null,
+      fileName: "visible.pdf",
+      fileType: "pdf",
+      bytes: 100,
+      sha256: "sha-visible",
+    });
+    manuscripts.insertManuscript({
+      id: "m-archived",
+      userId: "user-1",
+      workspaceId: null,
+      fileName: "archived.pdf",
+      fileType: "pdf",
+      bytes: 100,
+      sha256: "sha-archived",
+    });
+    manuscripts.setManuscriptArchived("m-archived", true);
+
+    expect(manuscripts.listManuscriptsByUser("user-1").map((m) => m.id)).toEqual([
+      "m-visible",
+    ]);
+    expect(
+      manuscripts.listManuscriptsByUser("user-1", { archived: true }).map((m) => m.id),
+    ).toEqual(["m-archived"]);
+  });
+});
+
+describe("user LLM settings encryption", () => {
+  it("stores apiKey encrypted and reads it back decrypted", () => {
+    users.setUserLlmSettings("user-1", {
+      enabled: true,
+      baseUrl: "https://api.example.test/v1",
+      model: "model-a",
+      apiKey: "sk-test-secret",
+    });
+
+    const stored = db
+      .prepare("SELECT llm_settings_json FROM users WHERE id = 'user-1'")
+      .get() as { llm_settings_json: string };
+    const raw = JSON.parse(stored.llm_settings_json) as { apiKey: string };
+    expect(raw.apiKey.startsWith("enc:v1:")).toBe(true);
+    expect(raw.apiKey).not.toContain("sk-test-secret");
+
+    const user = users.findUserById("user-1");
+    expect(user).not.toBeNull();
+    expect(users.getUserLlmSettings(user!)?.apiKey).toBe("sk-test-secret");
   });
 });

@@ -26,6 +26,7 @@ function migrate(db: DB): void {
   if (current < 4) applyV4(db);
   if (current < 5) applyV5(db);
   if (current < 6) applyV6(db);
+  if (current < 7) applyV7(db);
 }
 
 function applyV1(db: DB): void {
@@ -236,4 +237,12 @@ function applyV6(db: DB): void {
   if (!cols.includes("parse_job_id")) db.exec("ALTER TABLE manuscripts ADD COLUMN parse_job_id TEXT");
   db.exec("CREATE INDEX IF NOT EXISTS idx_manuscripts_parse_job ON manuscripts(parse_job_id)");
   db.exec("PRAGMA user_version = 6");
+}
+
+function applyV7(db: DB): void {
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_screening_logs_created_id
+      ON screening_logs(created_at DESC, id DESC);
+    PRAGMA user_version = 7;
+  `);
 }

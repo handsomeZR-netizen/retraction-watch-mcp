@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/auth/guard";
 import {
   countScreeningLogs,
   getScreeningLogStats,
-  listScreeningLogs,
+  listScreeningLogsPage,
   type LogFilters,
 } from "@/lib/db/screening-logs";
 import { findUserById } from "@/lib/db/users";
@@ -27,8 +27,10 @@ function parseFilters(url: URL): LogFilters {
   if (userId) filters.userId = userId;
   const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 50)));
   const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0));
+  const cursor = url.searchParams.get("cursor");
   filters.limit = limit;
-  filters.offset = offset;
+  if (cursor) filters.cursor = cursor;
+  else filters.offset = offset;
   return filters;
 }
 
@@ -38,7 +40,8 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const filters = parseFilters(url);
-  const items = listScreeningLogs(filters).map((row) => ({
+  const page = listScreeningLogsPage(filters);
+  const items = page.items.map((row) => ({
     id: row.id,
     userId: row.user_id,
     userLabel: row.user_id ? (findUserById(row.user_id)?.username ?? row.user_id) : null,
@@ -65,5 +68,12 @@ export async function GET(req: Request) {
     search: filters.search,
     userId: filters.userId,
   });
-  return NextResponse.json({ items, total, stats, limit: filters.limit, offset: filters.offset });
+  return NextResponse.json({
+    items,
+    total,
+    stats,
+    limit: filters.limit,
+    offset: filters.offset ?? 0,
+    nextCursor: page.nextCursor,
+  });
 }

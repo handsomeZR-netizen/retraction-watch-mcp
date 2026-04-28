@@ -221,9 +221,12 @@ export function countManuscriptsForScope(
 
 export function listManuscriptsByUser(
   userId: string,
-  options: { limit?: number; offset?: number } = {},
+  options: { limit?: number; offset?: number; archived?: boolean } = {},
 ): ManuscriptRow[] {
-  return listManuscriptsForScope({ userId, workspaceId: null }, options);
+  return listManuscriptsForScope(
+    { userId, workspaceId: null },
+    { ...options, archived: options.archived ?? false },
+  );
 }
 
 export function countManuscriptsByUser(userId: string): number {
@@ -233,4 +236,10 @@ export function countManuscriptsByUser(userId: string): number {
 export function deleteManuscript(id: string): boolean {
   const info = getAppDb().prepare("DELETE FROM manuscripts WHERE id = ?").run(id);
   return info.changes > 0;
+}
+
+export function listErroredManuscriptsOlderThan(cutoffIso: string): ManuscriptRow[] {
+  return getAppDb()
+    .prepare("SELECT * FROM manuscripts WHERE status = 'error' AND uploaded_at < ?")
+    .all(cutoffIso) as ManuscriptRow[];
 }

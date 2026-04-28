@@ -1,3 +1,9 @@
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+} from "node:crypto";
 import { nanoid } from "nanoid";
 import { getAppDb } from "./app-db";
 
@@ -44,19 +50,88 @@ export interface UserLlmSettings {
   enableHeaderParse?: boolean;
 }
 
+const ENCRYPTED_VALUE_PREFIX = "enc:v1:";
+const DEV_SESSION_SECRET = "dev-only-rw-screen-session-secret-change-me-in-production-32bytes";
+
 export function getUserLlmSettings(user: UserRow): UserLlmSettings | null {
   if (!user.llm_settings_json) return null;
   try {
-    return JSON.parse(user.llm_settings_json) as UserLlmSettings;
+    const parsed = JSON.parse(user.llm_settings_json) as UserLlmSettings;
+    if (parsed.apiKey) {
+      if (isEncryptedValue(parsed.apiKey)) {
+        parsed.apiKey = decryptString(parsed.apiKey);
+      } else {
+        setUserLlmSettings(user.id, parsed);
+      }
+    }
+    return parsed;
   } catch {
     return null;
   }
 }
 
 export function setUserLlmSettings(userId: string, value: UserLlmSettings | null): void {
+  const stored = value ? encryptLlmSettings(value) : null;
   getAppDb()
     .prepare("UPDATE users SET llm_settings_json = ? WHERE id = ?")
-    .run(value ? JSON.stringify(value) : null, userId);
+    .run(stored ? JSON.stringify(stored) : null, userId);
+}
+
+function encryptLlmSettings(value: UserLlmSettings): UserLlmSettings {
+  return {
+    ...value,
+    apiKey: value.apiKey
+      ? isEncryptedValue(value.apiKey)
+        ? value.apiKey
+        : encryptString(value.apiKey)
+      : value.apiKey,
+  };
+}
+
+function isEncryptedValue(value: string): boolean {
+  return value.startsWith(ENCRYPTED_VALUE_PREFIX);
+}
+
+function dataKey(): Buffer {
+  const raw = process.env.RW_DATA_KEY?.trim();
+  if (raw) {
+    if (!/^[0-9a-fA-F]{64}$/.test(raw)) {
+      throw new Error("RW_DATA_KEY must be a 32-byte hex string");
+    }
+    return Buffer.from(raw, "hex");
+  }
+  return createHash("sha256")
+    .update(process.env.RW_SESSION_SECRET ?? DEV_SESSION_SECRET)
+    .digest();
+}
+
+function encryptString(plaintext: string): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", dataKey(), iv);
+  const ciphertext = Buffer.concat([
+    cipher.update(plaintext, "utf8"),
+    cipher.final(),
+  ]);
+  const tag = cipher.getAuthTag();
+  return [
+    ENCRYPTED_VALUE_PREFIX.slice(0, -1),
+    iv.toString("base64url"),
+    tag.toString("base64url"),
+    ciphertext.toString("base64url"),
+  ].join(":");
+}
+
+function decryptString(encoded: string): string {
+  const parts = encoded.split(":");
+  if (parts.length !== 5 || `${parts[0]}:${parts[1]}:` !== ENCRYPTED_VALUE_PREFIX) {
+    throw new Error("invalid encrypted value");
+  }
+  const iv = Buffer.from(parts[2], "base64url");
+  const tag = Buffer.from(parts[3], "base64url");
+  const ciphertext = Buffer.from(parts[4], "base64url");
+  const decipher = createDecipheriv("aes-256-gcm", dataKey(), iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
 }
 
 export function setUserPassword(userId: string, passwordHash: string): void {

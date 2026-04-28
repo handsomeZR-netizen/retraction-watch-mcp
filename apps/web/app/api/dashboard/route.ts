@@ -72,7 +72,7 @@ export async function GET() {
   const recentRows = db
     .prepare(
       `SELECT id, file_name, file_type, uploaded_at, status, verdict, metadata_title, totals_json
-       FROM manuscripts WHERE ${where}
+       FROM manuscripts WHERE ${where} AND archived = 0
        ORDER BY uploaded_at DESC LIMIT 5`,
     )
     .all(param) as RecentRow[];

@@ -18,6 +18,7 @@ import {
   MagnifyingGlass,
   PlusCircle,
   ShieldStar,
+  SidebarSimple,
   Sparkle,
   TrashSimple,
   Warning,
@@ -82,6 +83,24 @@ export function AppSidebar() {
   const [openProjects, setOpenProjects] = useState<Set<string>>(new Set());
   const [recentOpen, setRecentOpen] = useState(true);
   const [archivedOpen, setArchivedOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  // Persist collapsed state in localStorage so it survives navigation.
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("rw:sidebar-collapsed");
+      if (stored === "1") setCollapsed(true);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem("rw:sidebar-collapsed", collapsed ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [collapsed]);
 
   const load = useCallback(async () => {
     const [m, p, a] = await Promise.all([
@@ -174,18 +193,75 @@ export function AppSidebar() {
     await load();
   }
 
-  return (
-    <aside className="w-64 shrink-0 border-r border-border bg-card flex flex-col h-screen sticky top-0 overflow-hidden">
-      <div className="px-3 py-3 border-b border-border space-y-2 shrink-0">
-        <Link href="/" className="flex items-center gap-2 px-1.5">
-          <span
-            aria-hidden
-            className="grid h-7 w-7 place-items-center rounded-md bg-foreground text-background text-[11px] font-bold tracking-wider"
+  if (collapsed) {
+    return (
+      <aside className="w-14 shrink-0 border-r border-border bg-card flex flex-col h-screen sticky top-0">
+        <div className="p-2 border-b border-border flex flex-col items-center gap-2">
+          <Link
+            href="/"
+            className="grid h-9 w-9 place-items-center rounded-md bg-foreground text-background text-[11px] font-bold tracking-wider"
+            title="RW Screen"
           >
             RW
-          </span>
-          <span className="text-sm font-semibold tracking-tight">RW Screen</span>
-        </Link>
+          </Link>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setCollapsed(false)}
+            title="展开侧栏"
+          >
+            <SidebarSimple className="h-4 w-4" weight="duotone" />
+          </Button>
+          <Button
+            asChild
+            variant="default"
+            size="icon"
+            className="h-9 w-9"
+            title="新筛查会话"
+          >
+            <Link href="/">
+              <PlusCircle className="h-4 w-4" weight="bold" />
+            </Link>
+          </Button>
+        </div>
+        <div className="flex-1 overflow-y-auto py-2 flex flex-col items-center gap-1">
+          {active.slice(0, 6).map((s) => (
+            <CollapsedSessionDot key={s.manuscriptId} session={s} active={pathname.includes(s.manuscriptId)} />
+          ))}
+        </div>
+        <div className="p-2 border-t border-border flex flex-col items-center gap-1">
+          <CollapsedNavIcon href="/" icon={House} label="首页" pathname={pathname} />
+          <CollapsedNavIcon href="/history" icon={ClockCounterClockwise} label="历史" pathname={pathname} />
+          <CollapsedNavIcon href="/admin" icon={ShieldStar} label="管理" pathname={pathname} />
+        </div>
+      </aside>
+    );
+  }
+
+  return (
+    <aside className="w-60 shrink-0 border-r border-border bg-card flex flex-col h-screen sticky top-0 overflow-hidden">
+      <div className="px-3 py-3 border-b border-border space-y-2 shrink-0">
+        <div className="flex items-center justify-between gap-2">
+          <Link href="/" className="flex items-center gap-2 px-1.5 min-w-0">
+            <span
+              aria-hidden
+              className="grid h-7 w-7 place-items-center rounded-md bg-foreground text-background text-[11px] font-bold tracking-wider shrink-0"
+            >
+              RW
+            </span>
+            <span className="text-sm font-semibold tracking-tight truncate">RW Screen</span>
+          </Link>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0"
+            onClick={() => setCollapsed(true)}
+            title="折叠侧栏"
+          >
+            <SidebarSimple className="h-4 w-4" weight="duotone" />
+          </Button>
+        </div>
         <Button
           asChild
           variant="default"
@@ -410,6 +486,25 @@ function ActiveSessionRow({
         ? "text-destructive"
         : "text-foreground/70 animate-spin";
   const isLink = session.status === "done" || session.status === "deduped";
+  const stageLabel: Record<string, string> = {
+    uploaded: "已上传",
+    text_extracted: "文本提取",
+    metadata_extracted: "元数据",
+    authors_screened: "作者比对",
+    refs_segmented: "切分参考文献",
+    refs_structured: "结构化",
+    screening: "比对中",
+  };
+  const stageText =
+    session.status === "done"
+      ? "完成"
+      : session.status === "deduped"
+        ? "已复用"
+        : session.status === "error"
+          ? "错误"
+          : session.status === "uploading"
+            ? "上传中"
+            : (session.stage && stageLabel[session.stage]) ?? "解析中";
   const inner = (
     <div
       className={cn(
@@ -427,19 +522,18 @@ function ActiveSessionRow({
         }
       />
       <div className="flex-1 min-w-0 overflow-hidden">
-        <div className="text-xs font-medium truncate">{session.fileName}</div>
-        {session.status !== "done" && session.status !== "error" && (
+        <div className="text-xs font-medium truncate" title={session.fileName}>
+          {session.fileName}
+        </div>
+        {session.status !== "done" && session.status !== "error" && session.status !== "deduped" ? (
           <div className="mt-1 h-1 bg-muted rounded-full overflow-hidden">
             <div
               className="h-full bg-foreground/60 transition-all"
               style={{ width: `${pct}%` }}
             />
           </div>
-        )}
-        {session.message && (
-          <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
-            {session.message}
-          </div>
+        ) : (
+          <div className="text-[10px] text-muted-foreground mt-0.5 truncate">{stageText}</div>
         )}
       </div>
       <button
@@ -461,6 +555,68 @@ function ActiveSessionRow({
     </Link>
   ) : (
     inner
+  );
+}
+
+function CollapsedSessionDot({
+  session,
+  active,
+}: {
+  session: ActiveSession;
+  active: boolean;
+}) {
+  const Icon =
+    session.status === "done" || session.status === "deduped"
+      ? CheckCircle
+      : session.status === "error"
+        ? Warning
+        : CircleNotch;
+  const cls =
+    session.status === "done" || session.status === "deduped"
+      ? "text-success"
+      : session.status === "error"
+        ? "text-destructive"
+        : "text-foreground/70 animate-spin";
+  const isLink = session.status === "done" || session.status === "deduped";
+  const inner = (
+    <span
+      className={cn(
+        "grid h-9 w-9 place-items-center rounded-md transition-colors",
+        active ? "bg-accent" : "hover:bg-accent/40",
+      )}
+      title={`${session.fileName}`}
+    >
+      <Icon className={cn("h-4 w-4", cls)} weight={session.status === "done" ? "fill" : "bold"} />
+    </span>
+  );
+  return isLink ? <Link href={`/result/${session.manuscriptId}`}>{inner}</Link> : inner;
+}
+
+function CollapsedNavIcon({
+  href,
+  icon: Icon,
+  label,
+  pathname,
+}: {
+  href: string;
+  icon: PIcon;
+  label: string;
+  pathname: string;
+}) {
+  const active = pathname === href;
+  return (
+    <Link
+      href={href}
+      title={label}
+      className={cn(
+        "grid h-9 w-9 place-items-center rounded-md transition-colors",
+        active
+          ? "bg-accent text-foreground"
+          : "text-muted-foreground hover:text-foreground hover:bg-accent/40",
+      )}
+    >
+      <Icon className="h-4 w-4" weight="duotone" />
+    </Link>
   );
 }
 

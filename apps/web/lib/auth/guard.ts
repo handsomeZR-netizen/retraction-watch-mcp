@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureCleanupCronStarted } from "@/lib/cleanup";
 import { getCurrentUser, type CurrentUser } from "./session";
 
 export async function requireUser(): Promise<
@@ -10,6 +11,7 @@ export async function requireUser(): Promise<
       response: NextResponse.json({ error: "unauthorized" }, { status: 401 }),
     };
   }
+  ensureCleanupCronStarted();
   return { user };
 }
 
@@ -22,6 +24,7 @@ export async function requireAdmin(): Promise<
       response: NextResponse.json({ error: "unauthorized" }, { status: 401 }),
     };
   }
+  ensureCleanupCronStarted();
   if (user.role !== "admin") {
     return {
       response: NextResponse.json({ error: "forbidden" }, { status: 403 }),

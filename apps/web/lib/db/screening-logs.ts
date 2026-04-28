@@ -136,6 +136,7 @@ export interface LogFilters {
   search?: string;
   limit?: number;
   offset?: number;
+  cursor?: string;
 }
 
 function buildWhere(filters: LogFilters): { sql: string; params: unknown[] } {
@@ -184,15 +185,42 @@ function buildWhere(filters: LogFilters): { sql: string; params: unknown[] } {
   };
 }
 
-export function listScreeningLogs(filters: LogFilters): ScreeningLogRow[] {
+function buildListWhere(filters: LogFilters): { sql: string; params: unknown[] } {
   const { sql, params } = buildWhere(filters);
+  const cursor = decodeScreeningLogCursor(filters.cursor);
+  if (!cursor) return { sql, params };
+  return {
+    sql: sql
+      ? `${sql} AND (created_at < ? OR (created_at = ? AND id < ?))`
+      : "WHERE (created_at < ? OR (created_at = ? AND id < ?))",
+    params: [...params, cursor.createdAt, cursor.createdAt, cursor.id],
+  };
+}
+
+export function listScreeningLogs(filters: LogFilters): ScreeningLogRow[] {
+  const { sql, params } = buildListWhere(filters);
   const limit = filters.limit ?? 50;
-  const offset = filters.offset ?? 0;
+  const offset = filters.cursor ? 0 : filters.offset ?? 0;
   return getAppDb()
     .prepare(
-      `SELECT * FROM screening_logs ${sql} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      `SELECT * FROM screening_logs ${sql} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
     )
     .all(...params, limit, offset) as ScreeningLogRow[];
+}
+
+export function listScreeningLogsPage(filters: LogFilters): {
+  items: ScreeningLogRow[];
+  nextCursor: string | null;
+} {
+  const limit = filters.limit ?? 50;
+  const rows = listScreeningLogs({ ...filters, limit: limit + 1 });
+  const items = rows.slice(0, limit);
+  const hasMore = rows.length > limit;
+  const last = items.at(-1);
+  return {
+    items,
+    nextCursor: hasMore && last ? encodeScreeningLogCursor(last) : null,
+  };
 }
 
 export function countScreeningLogs(filters: LogFilters): number {
@@ -237,12 +265,36 @@ export function* iterateScreeningLogs(
   filters: LogFilters,
   pageSize = 500,
 ): Generator<ScreeningLogRow> {
-  let offset = 0;
+  let cursor: string | undefined;
   for (;;) {
-    const rows = listScreeningLogs({ ...filters, limit: pageSize, offset });
+    const page = listScreeningLogsPage({ ...filters, limit: pageSize, cursor });
+    const rows = page.items;
     if (rows.length === 0) return;
     for (const row of rows) yield row;
-    if (rows.length < pageSize) return;
-    offset += pageSize;
+    if (!page.nextCursor) return;
+    cursor = page.nextCursor;
+  }
+}
+
+function encodeScreeningLogCursor(row: ScreeningLogRow): string {
+  return Buffer.from(
+    JSON.stringify({ createdAt: row.created_at, id: row.id }),
+    "utf8",
+  ).toString("base64url");
+}
+
+function decodeScreeningLogCursor(
+  cursor: string | undefined,
+): { createdAt: string; id: string } | null {
+  if (!cursor) return null;
+  try {
+    const raw = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as {
+      createdAt?: unknown;
+      id?: unknown;
+    };
+    if (typeof raw.createdAt !== "string" || typeof raw.id !== "string") return null;
+    return { createdAt: raw.createdAt, id: raw.id };
+  } catch {
+    return null;
   }
 }
