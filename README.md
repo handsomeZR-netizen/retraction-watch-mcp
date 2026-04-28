@@ -1,777 +1,224 @@
-# RW Screen — 学术诚信筛查工具集
+<div align="center">
 
-[![License: MIT](https://img.shields.io/github/license/handsomeZR-netizen/retraction-watch-mcp)](./LICENSE)
-[![Node.js >=20](https://img.shields.io/badge/Node.js-%3E%3D20-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![MCP](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
+# RW Screen
+
+**Local-first academic-integrity screening against the Retraction Watch database.**
+
+[![CI](https://img.shields.io/github/actions/workflow/status/handsomeZR-netizen/retraction-watch-mcp/ci.yml?branch=main&label=CI&logo=github)](https://github.com/handsomeZR-netizen/retraction-watch-mcp/actions)
+[![Version](https://img.shields.io/badge/version-0.4.0-2ea44f)](./package.json)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Node](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![TypeScript 5.9](https://img.shields.io/badge/TS-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Next.js 15](https://img.shields.io/badge/Next.js-15-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
-[![Local First](https://img.shields.io/badge/local--first-privacy-111827)](#-隐私与安全)
+[![MCP](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](#-deploy)
+[![Tests](https://img.shields.io/badge/tests-118%20passing-brightgreen)](#-development)
 
-> 本地运行的学术诚信筛查工具集：基于 Crossref 公开的 Retraction Watch 撤稿数据库，对作者和投稿稿件做保守、可解释、可复核的比对。
->
-> 既可以以 **CLI / MCP server** 形态查"某个人是否出现在撤稿名单"，也可以以 **Next.js Web 站点** 形态查"一篇投稿是否引用了撤稿文献"。
+[Quickstart](#-quickstart) · [Web app](#-web-app) · [CLI](#%EF%B8%8F-cli) · [MCP](#-mcp-server) · [Deploy](#-deploy) · [Security](#-security)
 
----
-
-## 目录
-
-- [快速概览](#-快速概览)
-- [仓库结构](#-仓库结构-monorepo)
-- [前置依赖](#-前置依赖)
-- [安装](#-安装)
-- [初始化撤稿数据库](#-初始化撤稿数据库)
-- [Web 应用：稿件诚信筛查](#-web-应用稿件诚信筛查)
-- [CLI 用法](#-cli-用法)
-- [MCP Server](#-mcp-server)
-- [匹配策略](#-匹配策略)
-- [API：HTTP 接口](#-apihttp-接口)
-- [架构与数据流](#-架构与数据流)
-- [部署](#-部署)
-- [隐私与安全](#-隐私与安全)
-- [能做什么 / 不能做什么](#-能做什么-不能做什么)
-- [开发与测试](#-开发与测试)
-- [排障 FAQ](#-排障-faq)
-- [路线图](#-路线图)
-- [数据源与许可](#-数据源与许可)
+</div>
 
 ---
 
-## 🔍 快速概览
+## ✨ What it does
 
-| 场景 | 入口 | 说明 |
-| --- | --- | --- |
-| 查"某个人/作者是否出现在撤稿名单" | `rw-query` CLI / MCP `screen_person` tool | 输入姓名 + 邮箱/机构/DOI/PMID，返回保守可解释的匹配证据 |
-| 审"一篇投稿稿件是否引用了撤稿文献" | Web `http://localhost:3210` | 拖拽 PDF / Word / LaTeX，自动抽取参考文献并逐条比对 |
-| 程序化集成（Claude Desktop / Cursor / Claude Code） | MCP server `rw-mcp` | stdio 接入，复用同一引擎与策略 |
+- **Screen people** — given a name + institution / email / DOI / PMID, return conservative, evidence-backed matches against retracted authors.
+- **Screen manuscripts** — drop a PDF / DOCX / LaTeX, get every reference checked against the retraction database in one pass.
+- **One engine, three surfaces** — Web app (`localhost:3210`), CLI (`rw-query`), MCP server (`rw-mcp`) all share the same matcher and policies.
+- **Local-first by default** — the 360 MB Retraction Watch SQLite lives on your disk; nothing leaves the box unless you explicitly enable the LLM helper.
 
-**核心设计原则：**
-- ✅ **本地优先**：撤稿数据库在本机 SQLite；查询输入默认不出网
-- ✅ **保守可解释**：每条匹配都附 `evidence[]` 证据明细 + 严格/平衡两种策略
-- ✅ **裁决三档不一刀切**：`PASS` / `REVIEW` / `FAIL` —— 仅 DOI/PMID 精确命中才会判 `FAIL`
-- ✅ **可选 LLM 增强**：参考文献结构化抽取支持 DeepSeek / OpenAI 兼容服务，默认关闭
+> **Verdict is always one of three:** `PASS` · `REVIEW` · `FAIL`. Only exact DOI/PMID hits ever produce `FAIL` — soft matches are surfaced as `REVIEW` with full evidence.
 
 ---
 
-## 📦 仓库结构 (monorepo)
-
-npm workspaces，3 个内部包：
-
-```
-.
-├── packages/
-│   ├── core/         @rw/core    引擎 + CLI + MCP server
-│   │   ├── src/
-│   │   │   ├── data/         SQLite (better-sqlite3) 仓库 / 导入器 / 模式
-│   │   │   ├── matching/     matcher (人级) + reference-matcher (文献级) + normalize
-│   │   │   ├── mcp/          MCP server + prompts
-│   │   │   ├── cli/          rw-import / rw-query / rw-doctor / rw-mcp 入口
-│   │   │   └── policy.ts     balanced / strict 策略
-│   │   └── policies/         JSON 策略文件
-│   └── ingest/       @rw/ingest  稿件解析 + LLM 客户端
-│       └── src/
-│           ├── pdf.ts          unpdf (PDF 文本)
-│           ├── docx.ts         mammoth (Word)
-│           ├── latex.ts        .tex / .bib / .zip 解析
-│           ├── ocr.ts          tesseract.js fallback
-│           ├── metadata.ts     正则抽作者/机构/邮箱/ORCID
-│           ├── refs.ts         References 段落定位 + 切分 + 正则 DOI
-│           ├── llm-client.ts   OpenAI SDK + baseURL，DeepSeek 兼容
-│           └── screen-manuscript.ts  端到端编排
-├── apps/
-│   └── web/          @rw/web    Next.js 15 站点
-│       ├── app/                App Router：页面 + API 路由
-│       └── lib/                config / repository / store / sse 工具
-├── mcpb/             MCPB manifest 与打包
-├── docs/             架构与验收文档
-├── Dockerfile        多阶段镜像
-└── docker-compose.yml
-```
-
----
-
-## 🛠 前置依赖
-
-- **Node.js ≥ 20** （建议 20.10+；Web 应用需要 Next.js 15）
-- 操作系统：Windows / macOS / Linux
-- 磁盘：撤稿数据库导入后约 360 MB
-- **`better-sqlite3` 是 native 模块**，安装时若没下到预编译二进制会自编译：
-  - Windows：需要 Visual Studio Build Tools
-  - Linux：`apt install build-essential python3`
-  - macOS：`xcode-select --install`
-  - 大部分情况下 npm 会自动下载预编译 binary，无需配环境
-
----
-
-## 🚀 安装
+## 🚀 Quickstart
 
 ```bash
 git clone https://github.com/handsomeZR-netizen/retraction-watch-mcp.git
 cd retraction-watch-mcp
-npm install        # 自动安装 packages/* 与 apps/web 依赖
-npm run build      # 构建 @rw/core 与 @rw/ingest
-npm run build:web  # （仅生产部署需要）构建 Next.js 站点
-```
+npm ci
 
-构建产物：
-| 路径 | 说明 |
-| --- | --- |
-| `packages/core/dist/` | 编译后的引擎 + CLI bin（`rw-mcp`、`rw-import`、`rw-query`、`rw-doctor`） |
-| `packages/ingest/dist/` | 编译后的解析管线 |
-| `apps/web/.next/` | Next.js 站点（standalone build） |
-
-> 本仓库**不会**提交生成后的 SQLite 数据库；首次使用时通过 `npm run import` 拉取。
-
----
-
-## 📥 初始化撤稿数据库
-
-首次使用前需要先把 Retraction Watch CSV 导入本地：
-
-```bash
+# 1) Build the retraction database (~15 min, 360 MB)
 npm run import
+
+# 2) Configure secrets
+cp .env.example .env
+# generate hex secrets and paste into .env:
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+# 3) Seed the first admin user (password stays in your shell, never on disk)
+ADMIN_USERNAME=admin ADMIN_PASSWORD='choose-a-strong-one' \
+  npm run seed-admin -w @rw/web
+
+# 4) Run
+npm run dev:web                         # dev:   http://localhost:3210
+# or
+docker compose up -d                    # prod:  http://localhost
 ```
 
-CSV 大小约 64 MB，导入后 SQLite 数据库约 360 MB。默认位置：
-
-| 平台 | 默认路径 |
-| --- | --- |
-| Windows | `C:\Users\<you>\.retraction-watch-mcp\retraction-watch.sqlite` |
-| macOS / Linux | `~/.retraction-watch-mcp/retraction-watch.sqlite` |
-
-自定义位置（任选其一）：
-
-```bash
-# 通过命令行参数
-npm run import -- --db-path ./data/retraction-watch.sqlite
-
-# 通过环境变量（CLI/MCP/Web 都生效）
-export RW_MCP_DB_PATH=/abs/path/to/retraction-watch.sqlite
-export RW_MCP_DATA_DIR=/abs/path/to/dir   # 仅指定目录，文件名固定
-```
-
-更新数据：重新跑 `npm run import` 即可（覆盖旧文件）。
-
-诊断本地安装：
-
-```bash
-npm run doctor          # 人类可读
-npm run doctor -- --json  # 机器可读
-```
+Requirements: **Node ≥ 20**, ~1.5 GB free RAM, ~500 MB free disk after import. `better-sqlite3` is native — Windows users need VS Build Tools, Linux needs `build-essential python3`, macOS needs the Xcode CLI tools (most platforms get prebuilt binaries automatically).
 
 ---
 
-## 🌐 Web 应用：稿件诚信筛查
-
-### 启动开发服务器
-
-```bash
-# 1. 写一个 .env.local（仅本机，已经 .gitignored）
-node -e "console.log('RW_SESSION_SECRET=' + require('crypto').randomBytes(32).toString('hex'))" > apps/web/.env.local
-echo "RW_MCP_DB_PATH=$(pwd)/data/retraction-watch.sqlite" >> apps/web/.env.local
-
-# 2. 创建第一个 admin 账户（密码不会进 git）
-ADMIN_USERNAME=alice ADMIN_PASSWORD='your-strong-pw' npm run seed-admin -w @rw/web
-
-# 3. 启动
-npm run dev:web
-# 浏览器打开 http://localhost:3210，登录即可
-```
-
-未登录会被中间件拦截重定向到 `/login`。注册页 `/register` 公开开放（生产环境若不想让任意人注册，下个 P1 可以加白名单或邀请码）。第一个注册的人自动获得 admin 角色。
-
-### 使用流程
+## 📦 Repository layout
 
 ```
-[首页] 拖拽 PDF / .docx / .tex / .zip
-        ↓
-[/api/upload]  保存到 ~/.config/rw-screen/manuscripts/<id>/
-        ↓
-[/api/parse]   SSE 流式上报阶段：
-               uploaded → text_extracted → metadata_extracted
-               → refs_segmented → refs_structured → screening → done
-        ↓
-[/result/<id>] 总裁决徽章 + 元信息卡 + 参考文献逐行命中
-               (点击命中行展开证据抽屉，包含 RW 原始记录)
-        ↓
-[导出] /api/report/<id>?format=json|csv
+.
+├── packages/
+│   ├── core/         @rw/core    matcher · normalize · policies · CLIs · MCP server
+│   └── ingest/       @rw/ingest  PDF / DOCX / LaTeX → references → LLM client
+├── apps/
+│   └── web/          @rw/web     Next.js 15 app (App Router · iron-session · SQLite)
+├── mcpb/                         MCPB manifest + bundle
+├── docs/                         Deployment, acceptance criteria, use cases
+├── Dockerfile                    Multi-stage Node 20 build (standalone Next.js)
+└── docker-compose.yml            Production-ready, env_file + volume mounts
 ```
 
-### 检测规则
-
-| 情况 | 裁决 |
-| --- | --- |
-| 至少 1 条参考文献 DOI 或 PMID 精确命中撤稿数据库 | **FAIL** |
-| 至少 1 条参考文献无 DOI 但标题 Jaccard ≥ 0.55 + 作者重叠 + 年份 ±1 | **REVIEW** |
-| 部分弱匹配（仅标题或仅作者） | REVIEW（低置信） |
-| 全部清洁 | **PASS** |
-
-底部固定显示免责声明："本系统仅辅助筛查，不作为学术不端裁定的终审依据。"
-
-### LLM 配置（可选）
-
-打开 `http://localhost:3210/settings`，填写：
-
-| 字段 | 默认 | 说明 |
-| --- | --- | --- |
-| Base URL | `https://api.deepseek.com/v1` | 任何 OpenAI 兼容服务，例如智谱 `https://api.z.ai/api/paas/v4`、本地 vLLM、OpenAI 等 |
-| Model | `deepseek-v4-flash` | OAI 兼容的 model 名 |
-| API Key | (空) | 仅保存在服务端配置文件，永不回包前端 |
-| Enable LLM Refs Parse | ❌ | 启用 LLM 增强参考文献解析 |
-| Enable LLM Header Parse | ❌ | 启用 LLM 增强首页元数据 |
-| Cloud OCR | ❌ | 扫描版 PDF 时启用云端 OCR（默认本地 tesseract.js） |
-| Keep uploads | ❌ | 是否保留稿件副本（默认 24h 后自动清理） |
-
-#### LLM 抽取流程（参考文献）
-
-1. References 段落按字号 / 编号 / 段落空行切分成单条 ref
-2. 第一道：正则抽 DOI / PMID（覆盖现代论文 ~90%）
-3. 第二道：剩余条目按 20 条/批发给 LLM，强制 `tool_choice=emit_references` JSON Schema 严格输出
-4. 失败重试 1 次，仍失败降级到 regex-only
-
-#### 不通过 UI 配置（环境变量）
-
-```bash
-export DEEPSAPI_API_KEY=sk-xxx                  # 或 RW_LLM_API_KEY
-export RW_LLM_BASE_URL=https://api.deepseek.com/v1
-export RW_LLM_MODEL=deepseek-v4-flash
-```
-
-> ⚠️ **API Key 安全**：key 不会写入仓库、不会出现在 git diff、不会回到前端。如果走 UI 配置，仅服务端 `~/.config/rw-screen/config.json` 持久化，请确保该文件读权限。
+npm workspaces, no Turbo / Nx. Every package builds in isolation: `npm run build -w @rw/core`.
 
 ---
 
-## 💻 CLI 用法
+## 🌐 Web app
 
-### 单人筛查（同 MCP `screen_person`）
+The Web UI is the most ergonomic entry point. After login:
 
-```bash
-npm run query -- --name "Ahsen Maqsoom" --institution "COMSATS University Islamabad"
-```
+1. **Drag a manuscript** (PDF / DOCX / .tex / .zip) onto the home page.
+2. The pipeline streams progress over SSE: `uploaded → text_extracted → metadata_extracted → refs_segmented → refs_structured → screening → done`.
+3. The result page shows a verdict badge, every cited reference, and an evidence drawer with the original Retraction Watch record for any hit.
+4. Export the result with `/api/report/<id>?format=json|csv`.
 
-输出 JSON，包含 `verdict` / `candidates` / `nearMisses` / `evidence` / `safeSummary` / `consequentialUseWarning` 等。
+**Built-in detection rules**
 
-#### 完整选项
+| Trigger | Verdict |
+|---|---|
+| ≥1 reference DOI / PMID exact-matches a retraction | **FAIL** |
+| ≥1 reference matches by title (Jaccard ≥ 0.55) + author overlap + year ±1 | **REVIEW** |
+| Weak partial matches (title-only or author-only) | **REVIEW** (low confidence) |
+| All references clean | **PASS** |
 
-```
---name <name>                       Required. 人名（中英文都支持）
---email <email>                     Optional. 仅域名作为弱证据
---institution <institution>         Optional. 机构
---doi <doi>                         Optional. 原论文 DOI 或撤稿声明 DOI
---pmid <pmid>                       Optional. PubMed ID
---include-notice-types <csv>        Optional. RetractionNature 过滤，例如 "Retraction,Correction"
---limit <n>                         Optional. 候选数 (1-50)
---db-path <path>                    Optional. 自定义 SQLite 路径
---policy <name|file>                Optional. balanced / strict / 自定义 JSON 路径
---strict                            Shortcut for --policy strict
---help                              帮助
-```
+A disclaimer is pinned to the bottom of every result: *"This is a screening aid, not a final adjudication of misconduct."*
 
-### 严格模式
-
-```bash
-npm run query -- --strict --name "Ahsen Maqsoom" --institution "COMSATS University Islamabad"
-```
-
-严格模式：仅 DOI/PMID 精确命中才会作为正式候选；其它姓名/机构相似项一律降级到 `nearMisses`。
-
-### 全局命令
-
-```bash
-npm link
-rw-import --help
-rw-query --name "..." --institution "..."
-rw-doctor --json
-rw-mcp --help
-```
-
-### 直接跑 TS 源码（开发）
-
-```bash
-npm run dev:import
-npm run dev:query -- --name "Ahsen Maqsoom"
-npm run dev:mcp
-```
+**Optional LLM enhancement** (off by default) — at `/settings`, point any OpenAI-compatible endpoint (DeepSeek, ZhipuAI, local vLLM, OpenAI itself) and toggle reference / header extraction. The API key stays server-side, encrypted at rest with `RW_DATA_KEY` (AES-256-GCM).
 
 ---
 
-## 🧠 MCP Server
-
-启动 stdio MCP server：
+## 🖥️ CLI
 
 ```bash
-npm run mcp
-# 自定义路径
-npm run mcp -- --db-path /abs/path/to/retraction-watch.sqlite
-# 严格策略
-npm run mcp -- --policy strict
+# Person screen
+npm run query -- --name "Ahsen Maqsoom" --institution "COMSATS University"
+
+# Strict mode (DOI/PMID exact only — softer matches go to nearMisses)
+npm run query -- --strict --doi "10.1000/example"
+
+# Local install diagnostics
+npm run doctor                  # human
+npm run doctor -- --json        # machine
 ```
 
-### MCP Tools
+Returns JSON with `verdict`, `candidates`, `nearMisses`, `evidence`, `safeSummary`, and `consequentialUseWarning`. Supports `--policy balanced|strict|<path>.json` for custom thresholds.
 
-| Tool | 作用 |
-| --- | --- |
-| `screen_person` | 单人筛查 (姓名/邮箱/机构/DOI/PMID) |
-| `screen_batch` | 批量筛查多人 |
-| `lookup_record` | 通过 Record ID 查询单条记录 |
-| `lookup_doi` | 通过 DOI 精确查询 |
-| `explain_match` | 解释某查询与某条记录的打分证据 |
-| `get_source_versions` | 返回数据快照与匹配策略元信息 |
+Full flag list: `npm run query -- --help`.
 
-### MCP Resources
+---
 
-- `rw://source-version` — 当前数据快照
-- `rw://match-policy/current` — 当前匹配策略
-- `rw://record/{record_id}` — 任意记录详情
+## 🔌 MCP server
 
-### MCP Prompts
-
-| Prompt | 作用 |
-| --- | --- |
-| `screen-author` | 单人筛查工作流（措辞谨慎） |
-| `review-match-result` | 把 JSON 转成非定罪式人工复核摘要 |
-| `batch-integrity-check` | 批量诚信初筛 |
-| `explain-limitations` | 解释工具能做什么、不能证明什么 |
-
-### Claude Desktop 配置
+Plug RW Screen into Claude Desktop / Cursor / Claude Code via stdio:
 
 ```json
 {
   "mcpServers": {
     "retraction-watch": {
-      "command": "node",
-      "args": ["D:\\path\\to\\retraction-watch-mcp\\packages\\core\\dist\\index.js"],
-      "env": {
-        "RW_MCP_DB_PATH": "D:\\path\\to\\retraction-watch.sqlite"
-      }
+      "command": "npx",
+      "args": ["-y", "@rw/core", "rw-mcp"],
+      "env": { "RW_MCP_DB_PATH": "/abs/path/to/retraction-watch.sqlite" }
     }
   }
 }
 ```
 
-### Cursor 配置
-
-`.cursor/mcp.json`：
-
-```json
-{
-  "mcpServers": {
-    "retraction-watch": {
-      "type": "stdio",
-      "command": "node",
-      "args": ["/abs/path/to/retraction-watch-mcp/packages/core/dist/index.js"],
-      "env": {
-        "RW_MCP_DB_PATH": "/abs/path/to/retraction-watch.sqlite"
-      }
-    }
-  }
-}
-```
-
-### Claude Code
-
-```bash
-claude mcp add retraction-watch -- node /abs/path/to/retraction-watch-mcp/packages/core/dist/index.js
-```
+Tools exposed: `screen_person`, `screen_doi`, `screen_pmid`, `db_health`. Same engine as the CLI — same evidence schema, same policies.
 
 ---
 
-## ⚖️ 匹配策略
+## 🐳 Deploy
 
-### 策略文件
-
-- `packages/core/policies/balanced.json` — 默认平衡策略
-- `packages/core/policies/strict.json` — 严格策略（`hardIdentifiersOnly = true`）
-
-### 关键参数（节选）
-
-| 字段 | 默认 (balanced) | 说明 |
-| --- | --- | --- |
-| `thresholds.likelyMatch` | 0.7 | 人级 likely match 分数门槛 |
-| `thresholds.referenceConfirmed` | 0.95 | 文献级 confirmed 门槛 |
-| `thresholds.referenceLikely` | 0.7 | 文献级 likely 门槛 |
-| `thresholds.referenceTitleJaccardLikely` | 0.55 | 标题相似度高阈值 |
-| `thresholds.referenceTitleJaccardPossible` | 0.3 | 标题相似度可疑阈值 |
-| `weights.doiExact` / `weights.referenceDoiExact` | 1.0 | DOI 精确命中 |
-| `weights.referenceTitleHigh` | 0.55 | 高标题相似度加分 |
-| `weights.referenceAuthorOverlap` | 0.25 | 作者重叠加分 |
-| `weights.referenceYearMatch` | 0.1 | 年份 ±1 加分 |
-| `weights.referenceYearConflictPenalty` | -0.15 | 年份差距 ≥4 扣分 |
-| `safety.hardIdentifiersOnly` | false (balanced) / true (strict) | 仅 DOI/PMID 精确才作为正式候选 |
-
-### 自定义策略
-
-把 balanced.json 复制为 `my-policy.json`，调整阈值和权重，然后：
+A 4 GB VPS (Aliyun ECS, DigitalOcean, Hetzner) is enough. The included `Dockerfile` is multi-stage and produces a ~500 MB final image (Next.js standalone + `better-sqlite3` native binding).
 
 ```bash
-rw-query --policy ./my-policy.json --name "..."
-rw-mcp --policy ./my-policy.json
-```
+# On the server (Ubuntu 22.04 recommended)
+git clone https://github.com/handsomeZR-netizen/retraction-watch-mcp.git
+cd retraction-watch-mcp
 
----
-
-## 🌐 API：HTTP 接口
-
-Web 站点暴露的 REST 接口（全部 `runtime: nodejs`）：
-
-| Method & Path | 用途 |
-| --- | --- |
-| `POST /api/screen-person` | 单人筛查（等价于 MCP `screen_person`） |
-| `POST /api/upload` | multipart 上传稿件，返回 `{ manuscriptId, fileName, fileType, bytes, uploadedAt }` |
-| `GET  /api/parse?manuscriptId=...` | SSE 流式触发解析 + 筛查 |
-| `GET  /api/result/[id]` | 拉取已生成的 JSON 结果 |
-| `GET  /api/report/[id]?format=json\|csv` | 下载报告（`application/json` 或 `text/csv`） |
-| `GET  /api/settings` | 读取当前配置（API key 已脱敏为 `***`） |
-| `POST /api/settings` | 更新配置 |
-
-### `POST /api/screen-person` 示例
-
-```bash
-curl -X POST http://localhost:3210/api/screen-person \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Ahsen Maqsoom","institution":"COMSATS University Islamabad","strict_mode":false}'
-```
-
-返回（节选）：
-
-```json
-{
-  "queryId": "uuid",
-  "verdict": "likely_match",
-  "identityConfirmed": false,
-  "reviewRequired": true,
-  "score": 0.72,
-  "candidates": [...],
-  "nearMisses": [],
-  "evidence": [
-    { "field": "name", "strength": "medium", "scoreDelta": 0.48, "message": "Author name exactly matches ..." },
-    { "field": "institution", "strength": "medium", "scoreDelta": 0.24, "message": "Institution has high token overlap ..." }
-  ],
-  "safeSummary": "A likely record-level similarity ...",
-  "consequentialUseWarning": "This result must not be used as the sole basis for hiring, ...",
-  "policyVersion": "rw-person-screening-v2"
-}
-```
-
-### `POST /api/upload` + `GET /api/parse` SSE 示例
-
-```bash
-ID=$(curl -s -F file=@manuscript.pdf http://localhost:3210/api/upload | jq -r .manuscriptId)
-curl -N "http://localhost:3210/api/parse?manuscriptId=$ID"
-# data: {"stage":"uploaded","message":"manuscript.pdf (1234.5 KB)"}
-# data: {"stage":"text_extracted","message":"已提取 45678 字符（12 页）"}
-# data: {"stage":"metadata_extracted","message":"识别到 4 位作者；标题: ..."}
-# data: {"stage":"refs_segmented","message":"参考文献分割：48 条"}
-# data: {"stage":"refs_structured","message":"结构化参考文献：48 条"}
-# data: {"stage":"screening","message":"5/48 已比对"}
-# ...
-# data: {"stage":"done","message":"verdict=PASS; saved","manuscriptId":"...","detail":{...}}
-```
-
----
-
-## 🏗 架构与数据流
-
-### 引擎核心 (`@rw/core`)
-
-```
-[CSV (Crossref/GitLab)]
-      ↓ rw-import
-[SQLite: rw_records / rw_authors / rw_institutions / rw_dois / source_snapshots]
-      ↑
-[matching/normalize.ts]  归一化 (DOI / 名字 / 标题 / 中文拼音)
-[matching/matcher.ts]    人级评分：DOI/PMID/Name/Institution/Email
-[matching/reference-matcher.ts]  文献级评分：DOI/PMID/Title-Jaccard/Authors/Year/Journal
-[policy.ts]              balanced / strict 阈值与权重
-```
-
-### 解析管线 (`@rw/ingest`)
-
-```
-buffer + fileType
-  ├─ pdf      → unpdf (extractText + getMeta 并行) → ExtractedDocument
-  ├─ docx     → mammoth.extractRawText
-  └─ latex    → 解 .zip (yauzl.fromBuffer) → strip TeX → 解 .bib + \bibitem
-
-ExtractedDocument
-  ├─ extractHeaderMetadata (regex / 启发式 + 可选 LLM)
-  └─ locateAndSplitReferences → regexStructure (DOI/PMID 直查)
-                              ↘ 余下 → DeepseekLlmClient.structureReferences
-                                       (按 20 条/批，tool_choice 强制 JSON Schema)
-```
-
-### Web 编排 (`@rw/web`)
-
-```
-[upload]──► [SSE parse]──► screenManuscript
-                              ↓
-              repository.findReferenceCandidates
-                              ↓ 逐条
-              screenReference (复用 matcher 的证据格式)
-                              ↓
-              ManuscriptScreenResult (JSON 写入 ~/.config/rw-screen/manuscripts/<id>/result.json)
-                              ↓
-              [/result/<id>] 渲染 + [/api/report] 导出
-```
-
-### 数据模型简化
-
-```
-rw_records (record_id PK)
-  ├── rw_authors      (record_id FK, normalized_name, surname, signature)
-  ├── rw_institutions (record_id FK, normalized_institution)
-  └── rw_dois         (record_id FK, doi_type, doi)
-```
-
-索引：`idx_rw_authors_normalized` / `_signature` / `_surname`、`idx_rw_institutions_norm`、`idx_rw_dois_doi`、`idx_rw_records_nature`。
-
----
-
-## 📦 部署
-
-### 零成本零绑卡方案：Cloudflare Tunnel
-
-**最推荐的低风险演示部署**，详细步骤见 [docs/DEPLOY-CLOUDFLARE.md](./docs/DEPLOY-CLOUDFLARE.md)。一句话上手：
-
-```bash
-# 终端 A
-RW_MCP_DB_PATH=/abs/path/retraction-watch.sqlite npm run dev:web
-
-# 终端 B
-cloudflared tunnel --url http://localhost:3210
-```
-
-立刻拿到 `https://*.trycloudflare.com` 的临时 HTTPS 公网 URL。绑自有域名 + 加 Cloudflare Access 鉴权全部免费。
-
-### Docker（自托管 24×7）
-
-```bash
-mkdir -p ./data ./config
-cp /path/to/retraction-watch.sqlite ./data/retraction-watch.sqlite
+cp .env.example .env                    # then edit: RW_SESSION_SECRET, RW_DATA_KEY, RW_BASE_URL, RW_HOST_PORT
+mkdir -p data config
+RW_MCP_DB_PATH=$PWD/data/retraction-watch.sqlite npm run import   # ~30 min, 360 MB
 
 docker compose up -d
-# 浏览器打开 http://localhost:3210
+docker compose logs -f rw-screen
 ```
 
-`docker-compose.yml` 已经把 `./data` 与 `./config` 挂载到容器，数据库文件不会打进镜像。
+The Compose file maps `${RW_HOST_PORT:-3210} → 3210`, mounts `./data` and `./config` as persistent volumes, sets `NODE_OPTIONS=--max-old-space-size=2048` to keep Node within budget on a 4 GB box, and reads every secret from `.env`.
 
-环境变量（容器内默认值）：
+For HTTPS / domain / TLS, see [`docs/DEPLOY.md`](docs/DEPLOY.md). For Cloudflare Workers / Pages, see [`docs/DEPLOY-CLOUDFLARE.md`](docs/DEPLOY-CLOUDFLARE.md).
 
-| 变量 | 容器默认 |
-| --- | --- |
-| `RW_MCP_DB_PATH` | `/data/retraction-watch.sqlite` |
-| `RW_SCREEN_CONFIG_DIR` | `/config` |
-| `RW_SCREEN_DATA_DIR` | `/data/manuscripts` |
+---
 
-### 自托管 Node 进程
+## 🔒 Security
+
+- **Local-first storage.** Both databases (`retraction-watch.sqlite`, `app.sqlite`) are local SQLite files. No background telemetry, no outbound calls unless you opt in to the LLM helper.
+- **Append-only audit log.** Every privileged action (login, role change, manuscript delete, force-logout) is logged once, in a transaction. The `audit_log` table has no UPDATE / DELETE statements anywhere in the codebase — retention is the operator's responsibility (archive externally if needed).
+- **AES-256-GCM at rest** for sensitive fields: per-user LLM API keys (`users.llm_settings_json`) and selected audit log details. Key derives from `RW_DATA_KEY` (preferred) or `RW_SESSION_SECRET` (fallback). Production refuses to boot without one of them.
+- **CSRF defense.** Origin / `Sec-Fetch-Site` enforcement in `middleware.ts`; production trusts only `RW_BASE_URL` (not the raw `Host` header). State-changing API calls reject cross-origin requests outright.
+- **Session hardening.** iron-session sealed cookies, 30-day TTL, `httpOnly` + `secure` (prod) + `sameSite=lax`. `session_version` bumps on password change / disable / force-logout invalidate every existing session.
+- **OAuth account-takeover prevention.** GitHub `/user/emails` is consulted explicitly to verify a primary email; auto-link to a local account requires the provider to assert `email_verified = true`.
+- **Upload sniffing.** Uploads are validated by reading magic bytes (PDF `%PDF-` / `%%EOF`, ZIP local header + `[Content_Types].xml` for DOCX) — extension is advisory only. Encrypted PDFs and corrupted xref pointers are rejected before parsing.
+
+---
+
+## 🧪 Development
 
 ```bash
-npm run build && npm run build:web
-NODE_ENV=production node apps/web/.next/standalone/apps/web/server.js
-# 默认监听 3210（next start -p 3210 的别名）
+npm run typecheck           # 3 packages, strict TS 5.9
+npm run test                # 16 files, 118 tests (vitest + @rw/core, @rw/ingest)
+npm run dev:web             # Next.js dev on :3210
+npm run lint -w @rw/web
 ```
 
-### 反向代理
+CI runs on Linux / macOS / Windows × Node 20 on every push.
 
-Nginx 示例（保留 SSE keepalive）：
-
-```nginx
-location / {
-    proxy_pass http://127.0.0.1:3210;
-    proxy_http_version 1.1;
-    proxy_set_header Connection "";
-    proxy_buffering off;
-    proxy_cache off;
-    proxy_read_timeout 600s;
-}
-```
-
-### MCPB 打包
-
-```bash
-npm run mcpb:stage
-npm run mcpb:pack
-```
-
-打包出的 `.mcpb` 不内置 SQLite 数据库，安装后需要把 `db_path` 指向本机 `rw-import` 生成的数据库。
+**Versioning.** All four `package.json` files (root + 3 workspaces) move together; a release bumps every one. Internal `@rw/core` / `@rw/ingest` deps inside the monorepo are pinned to the exact same version.
 
 ---
 
-## 🔐 用户认证 + 历史记录
+## 📜 What's new in 0.4.0
 
-Web 站点带一个轻量认证层：
-
-| 能力 | 实现 |
-| --- | --- |
-| 注册 / 登录 / 登出 | `iron-session`（加密 cookie，HTTP-only，SameSite=Lax）+ `bcryptjs` 12 rounds |
-| 用户数据库 | `~/.config/rw-screen/app.sqlite`（独立于撤稿库，便于备份/迁移） |
-| 路由保护 | `middleware.ts` —— 除 `/login` `/register` `/api/auth/*` `/api/health` 全部需登录 |
-| 历史记录 | 每个用户独立的 manuscript 列表，`/history` 页面查看 / 删除 |
-| 越权防护 | 所有 `/api/result/*` `/api/report/*` `/api/parse` `/api/manuscripts/*` 校验 `manuscripts.user_id == current.user.id` |
-| 限流 | 内存 LRU（登录 IP 10/分钟、用户 5/分钟、注册 IP 5/分钟） |
-| Audit log | `audit_log` 表记录 register/login/logout/upload/delete_manuscript |
-| Admin | seed-admin CLI 设置；或第一个注册者自动 admin |
-| Session 撤销 | users 表 `session_version`，登出/改密 +1，旧 cookie 自动失效 |
-
-**部署须知（VPS / Docker）**：
-- 必须设置 `RW_SESSION_SECRET`（≥ 32 字符随机），否则 iron-session 会用 dev fallback 提示 |
-- `RW_APP_DB_DIR` 可指向 volume 挂载点 `/data` 让 app.sqlite 持久化 |
-- 容器启动后用 `docker exec ... npm run seed-admin -w @rw/web` 一次性灌 admin |
-
-## 🔒 隐私与安全
-
-| 项目 | 默认行为 |
-| --- | --- |
-| Retraction Watch CSV 下载 | 仅在 `rw-import` 时连接 GitLab，不传任何查询输入 |
-| 单人 / 文献筛查 | 完全本地，**不出网** |
-| LLM 参考文献增强 | **默认关闭**；启用后仅参考文献文本片段发往所配置的 OAI 兼容服务 |
-| 云端 OCR | **默认关闭**；启用后仅扫描版 PDF 整页图片上传 |
-| 稿件副本 | 默认 24h 后自动清理（可在 `/settings` 关闭） |
-| API Key | 服务端持久化在 `~/.config/rw-screen/config.json`，UI 显示脱敏 `***`，永不回包到前端 |
-| 邮箱 | 仅域名用作弱证据；用户名部分被丢弃 |
-| 查询日志 | 不记录、不上报；进程重启即丢 |
-
-> **未来**：如果你打算把 Web 站点部署成多用户在线服务，需要额外实现：登录/RBAC、审计日志、稿件加密落盘、合规免责弹窗。
+- **Four-way Codex security audit.** Each module (auth, ingest, workspaces, admin) was reviewed by a parallel agent with full test authority. Resulting fixes:
+  - Session TTL alignment, OAuth state timing-safe comparison, OAuth verified-email enforcement.
+  - Server-side upload byte-sniffing, PDF resource cleanup, parse queue stale-job recovery.
+  - Multi-tenant authorization tests, Hebrew / Arabic / Chinese author normalization, workspace race-condition fix.
+  - Hardened audit log with AES-GCM detail encryption, last-admin lockout prevention, append-only invariant.
+- **Shared crypto helper** — `apps/web/lib/crypto/data-key.ts` is now the single source of truth for AES-256-GCM, used by both LLM API key encryption and audit detail encryption.
+- **Production-ready Docker Compose** — `env_file: .env`, persistent `app.sqlite` via `RW_APP_DB_DIR=/config`, configurable host port, Node heap cap.
+- **`.env.example`** documenting every env var.
+- **Tests grew from ~6 files to 16 files / 118 cases.**
 
 ---
 
-## ✅ 能做什么 / 不能做什么
+## 📚 Docs
 
-### 能做什么
-
-- 从 Retraction Watch CSV 构建本地 SQLite 索引，秒级查询
-- 单人保守筛查：DOI/PMID 精确 → `confirmed`；姓名+机构高重叠 → `likely_match`；纯姓名相似 → `possible_match`；其它 → `no_match`
-- 整篇稿件参考文献逐条比对：DOI/PMID 命中即 FAIL；标题 Jaccard + 作者重叠 + 年份匹配 → REVIEW
-- 中英混排支持：中文姓名走拼音回退；中文标题走 bigram tokens
-- 双策略：balanced（默认）/ strict（仅硬标识符命中作为正式候选）
-- 可解释：每条匹配附 `evidence[]` 明细 + `safeSummary` 措辞模板
-
-### 不能做什么
-
-- **不是**身份裁定系统：非 DOI/PMID 命中只是字符串相似度，不能证明同一人 / 同一论文
-- **不能**证明个人存在学术不端
-- 不会做"全文相似度反查"（比如检测正文是否援引了撤稿文献的观点） —— v0.2 计划之一
-- 不会自动给参考文献加权重判官式裁决；最终还是需要编辑/评审人复核
-
-### Retraction Watch 数据本身的限制
-
-- 没有邮箱字段
-- 作者列表与机构列表无法一一对应
-- 名字字符串不带 ROR / ORCID 的官方映射
+- [`docs/DEPLOY.md`](docs/DEPLOY.md) — full deployment guide (HTTPS, domain, ICP, backup)
+- [`docs/DEPLOY-CLOUDFLARE.md`](docs/DEPLOY-CLOUDFLARE.md) — Cloudflare Pages / Workers
+- [`docs/acceptance-criteria.md`](docs/acceptance-criteria.md) — verdict semantics & evidence schema
+- [`docs/result-interpretation.md`](docs/result-interpretation.md) — how to read a screening report
+- [`docs/use-cases.md`](docs/use-cases.md) — editorial workflows, journal integration patterns
 
 ---
 
-## 🧰 开发与测试
+## 📄 License
 
-### 全量验证
+MIT — see [`LICENSE`](LICENSE).
 
-```bash
-npm install
-npm run typecheck   # 三个 workspace 全部 typecheck
-npm test            # @rw/core vitest（@rw/ingest 暂无单测，--passWithNoTests）
-npm run build       # 构建 core + ingest
-npm run build:web   # 构建 Next.js
-npm run doctor      # 检查 Node / SQLite / DB / policy 状态
-```
-
-### 单跑某个包
-
-```bash
-npm run typecheck -w @rw/core
-npm run test -w @rw/core
-npm run build -w @rw/ingest
-npm run dev:web -w @rw/web        # 或根目录 npm run dev:web
-```
-
-### 测试集（建议）
-
-构建一个本地 `tests/fixtures/` 目录用于回归：
-
-| 目录 | 内容 | 期望 |
-| --- | --- | --- |
-| `pass/` | 5 篇正常英文稿件 | PASS |
-| `fail-doi/` | 5 篇引用了撤稿论文（带 DOI） | FAIL |
-| `review-no-doi/` | 5 篇引用了撤稿但 ref 不带 DOI | REVIEW 或 FAIL |
-| `cn-mixed/` | 5 篇含中文期刊参考文献 | 视情况 |
-
-跑：
-
-```bash
-for f in tests/fixtures/**/*.pdf; do
-  ID=$(curl -s -F file=@"$f" http://localhost:3210/api/upload | jq -r .manuscriptId)
-  curl -s "http://localhost:3210/api/parse?manuscriptId=$ID" > /dev/null
-  curl -s "http://localhost:3210/api/report/$ID?format=json" | jq '{file:"'"$f"'", verdict, totals}'
-done
-```
-
----
-
-## 🔧 排障 FAQ
-
-**Q: `Local Retraction Watch database not found`**
-A: 先跑 `npm run import`；或确认 `RW_MCP_DB_PATH` 指向真实文件，或 `--db-path` 路径正确。
-
-**Q: `npm run doctor` 显示 better-sqlite3 失败**
-A: native 模块编译失败，安装系统构建工具（见[前置依赖](#-前置依赖)）；或者用 nvm 切回纯净 Node 20.x 重装 `npm install`。
-
-**Q: Web 站点能起，但 `/api/parse` 报 "manuscript not found"**
-A: 上传成功后会返回 `manuscriptId`，确认 SSE URL 用了同一个；检查 `~/.config/rw-screen/manuscripts/<id>/upload.json` 是否存在。
-
-**Q: 启用了 LLM 增强但参考文献仍未结构化**
-A: 检查 `/settings`：(1) Enable LLM Refs Parse 是否打开；(2) Base URL/Model/Key 是否正确；(3) `/api/parse` SSE 中 `refs_structured` 阶段的 `detail.llmCalls` 是否 > 0；(4) 服务端日志是否有 OpenAI 401/429。
-
-**Q: PDF 是扫描版，文本提取为空**
-A: 默认会触发本地 tesseract.js（中英文识别）；如需更高精度，开启 `/settings` 的 Cloud OCR 开关并接入云服务（v0.2 完善）。
-
-**Q: 中文期刊参考文献漏匹配**
-A: `screenReference` 已对中文做拼音回退 + bigram tokens，但短标题（< 4 字）召回会偏低。如果遇到大量中文 ref，建议同时启用 LLM 增强让作者/标题字段更干净。
-
-**Q: 想看为什么某条 ref 被判 confirmed**
-A: 在结果页点击命中行，右侧会展开 `MatchEvidence[]` 明细；或调 `/api/report/<id>?format=json` 拿到 `screenedReferences[*].result.evidence` 列表。
-
-**Q: MCP 客户端启动但 tools 调不通**
-A: 确认已跑 `npm run build`；MCP 配置的 `args` 指向 `packages/core/dist/index.js`（绝对路径）；`RW_MCP_DB_PATH` 已设置。
-
-**Q: 导入很慢 / SQLite 文件很大**
-A: CSV 64 MB → SQLite 约 360 MB 是预期值（多张表 + 多个索引）；首次 SSD 上约 30-60s。
-
----
-
-## 🗺 路线图
-
-- [ ] FTS5 + 批量候选检索：单稿件 SQL 调用从 ~1000 次降到 <50 次
-- [ ] 全文相似度反查：检测正文是否援引撤稿文献观点（段落级嵌入 + 向量检索）
-- [ ] 多用户登录 / 查询历史 / 审计日志
-- [ ] 撤稿数据库 cron 自动刷新 + Webhook
-- [ ] PDF 扫描版的高质量 OCR 管线（pdf-to-img + tesseract.js / 云 OCR）
-- [ ] 更完整的机构别名与 ROR 增强
-- [ ] CSV 报告中加入 RW 撤稿声明 URL 直链
-- [ ] 移到 `pnpm` workspaces（可选，目前 npm 工作良好）
-
----
-
-## 📚 数据源与许可
-
-**主数据源：**
-
-```
-https://gitlab.com/crossref/retraction-watch-data/-/raw/main/retraction_watch.csv
-```
-
-Crossref 文档说明 GitLab 仓库是保持 Retraction Watch 数据更新的推荐来源。本项目直接下载 raw CSV 用于本地工作流。旧的 Crossref Labs 接口不作为稳定契约，Retraction Watch 网页搜索页也不会作为程序化主入口。
-
-Crossref 将 Retraction Watch database 标为 **CC0**。若在论文、报告或公开成果中使用，请按 Retraction Watch 用户指南引用数据源。
-
-**项目代码许可：MIT**（见 [LICENSE](./LICENSE)）。Retraction Watch / Crossref 数据本身不随本仓库分发。
-
----
-
-## 致谢
-
-- Crossref 与 Retraction Watch 的数据维护团队
-- [unpdf](https://github.com/unjs/unpdf)、[mammoth](https://github.com/mwilliamson/mammoth.js)、[better-sqlite3](https://github.com/WiseLibs/better-sqlite3)、[pinyin-pro](https://github.com/zh-lx/pinyin-pro)、[tesseract.js](https://github.com/naptha/tesseract.js) 等开源依赖
-
-如果发现误报或漏报，请提交 issue 附上：
-1. 输入（脱敏后即可）
-2. 期望裁决 vs 实际裁决
-3. `evidence[]` 明细
-4. 对应 RW 记录的 `recordId`
+The Retraction Watch dataset is © Crossref / Center for Scientific Integrity, distributed under **CC BY 4.0**. Credit them if you publish results derived from this tool.
