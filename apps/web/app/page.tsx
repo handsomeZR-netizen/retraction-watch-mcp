@@ -65,9 +65,10 @@ export default function HomePage() {
 
   const onDrop = useCallback(
     async (files: File[]) => {
-      for (const file of files) {
-        await sessions.start({ file });
-      }
+      // Parallel: upload + parse-start are independent network calls, and the
+      // server's parse queue still serializes the actual screening jobs. Drop
+      // 5 PDFs at once and they all start uploading immediately.
+      await Promise.all(files.map((file) => sessions.start({ file })));
     },
     [sessions],
   );

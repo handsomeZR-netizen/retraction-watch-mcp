@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { AuthorScreenBadge } from "@/components/AuthorScreenBadge";
 import { AuthorSummaryCard } from "@/components/AuthorSummaryCard";
+import { ManuscriptNotes } from "@/components/ManuscriptNotes";
 import { ReferenceTable } from "@/components/ReferenceTable";
 import { ResultLayout } from "@/components/ResultLayout";
 import { VerdictCard } from "@/components/VerdictCard";
@@ -89,6 +90,12 @@ export default async function ResultPage({
 
         <VerdictCard verdict={result.verdict} totals={result.totals} />
       </Card>
+
+      <ManuscriptNotes
+        manuscriptId={id}
+        initialNotes={manuscript?.notes ?? null}
+        initialUpdatedAt={manuscript?.notes_updated_at ?? null}
+      />
 
       {result.screenedAuthors && result.screenedAuthors.length > 0 && (
         <AuthorSummaryCard authors={result.screenedAuthors} />

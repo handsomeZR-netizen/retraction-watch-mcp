@@ -33,6 +33,7 @@ function migrate(db: DB): void {
   if (current < 6) inTx(applyV6);
   if (current < 7) inTx(applyV7);
   if (current < 8) inTx(applyV8);
+  if (current < 9) inTx(applyV9);
 }
 
 function applyV1(db: DB): void {
@@ -251,6 +252,25 @@ function applyV7(db: DB): void {
       ON screening_logs(created_at DESC, id DESC);
     PRAGMA user_version = 7;
   `);
+}
+
+function applyV9(db: DB): void {
+  // Free-form per-manuscript notes for small-team review workflow:
+  // "已发邮件给作者询问 X" / "等同事张三复核" / etc.
+  // Visible to anyone who can canAccessManuscript; capped at 4000 chars.
+  const cols = (db.prepare("PRAGMA table_info(manuscripts)").all() as { name: string }[]).map(
+    (r) => r.name,
+  );
+  if (!cols.includes("notes")) {
+    db.exec("ALTER TABLE manuscripts ADD COLUMN notes TEXT");
+  }
+  if (!cols.includes("notes_updated_at")) {
+    db.exec("ALTER TABLE manuscripts ADD COLUMN notes_updated_at TEXT");
+  }
+  if (!cols.includes("notes_updated_by")) {
+    db.exec("ALTER TABLE manuscripts ADD COLUMN notes_updated_by TEXT");
+  }
+  db.exec("PRAGMA user_version = 9");
 }
 
 function applyV8(db: DB): void {

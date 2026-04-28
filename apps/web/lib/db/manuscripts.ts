@@ -20,6 +20,35 @@ export interface ManuscriptRow {
   project_id: string | null;
   archived: number;
   parse_job_id: string | null;
+  notes: string | null;
+  notes_updated_at: string | null;
+  notes_updated_by: string | null;
+}
+
+const NOTES_MAX_LENGTH = 4000;
+
+export function setManuscriptNotes(
+  id: string,
+  userId: string,
+  notes: string | null,
+): { ok: boolean; truncated: boolean } {
+  let normalized = (notes ?? "").trim();
+  let truncated = false;
+  if (normalized.length > NOTES_MAX_LENGTH) {
+    normalized = normalized.slice(0, NOTES_MAX_LENGTH);
+    truncated = true;
+  }
+  const valueOrNull = normalized.length > 0 ? normalized : null;
+  const info = getAppDb()
+    .prepare(
+      `UPDATE manuscripts
+          SET notes = ?,
+              notes_updated_at = ?,
+              notes_updated_by = ?
+        WHERE id = ?`,
+    )
+    .run(valueOrNull, new Date().toISOString(), userId, id);
+  return { ok: info.changes > 0, truncated };
 }
 
 export function setManuscriptProject(id: string, projectId: string | null): void {
