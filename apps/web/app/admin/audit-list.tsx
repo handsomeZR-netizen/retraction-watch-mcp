@@ -26,6 +26,9 @@ const ACTION_VARIANT: Record<string, "default" | "secondary" | "success" | "warn
   upload: "secondary",
   delete_manuscript: "warning",
   change_settings: "muted",
+  admin_role_change: "warning",
+  admin_disable_user: "destructive",
+  admin_force_logout: "warning",
 };
 
 export function AdminAuditList() {
