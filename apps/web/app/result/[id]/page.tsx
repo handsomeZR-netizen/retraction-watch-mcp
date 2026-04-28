@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { AuthorScreenBadge } from "@/components/AuthorScreenBadge";
+import { AuthorSummaryCard } from "@/components/AuthorSummaryCard";
 import { ReferenceTable } from "@/components/ReferenceTable";
 import { ResultLayout } from "@/components/ResultLayout";
 import { VerdictCard } from "@/components/VerdictCard";
@@ -166,6 +167,10 @@ export default async function ResultPage({
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {result.screenedAuthors && result.screenedAuthors.length > 0 && (
+        <AuthorSummaryCard authors={result.screenedAuthors} />
       )}
 
       <ReferenceTable entries={result.screenedReferences} />

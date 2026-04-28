@@ -2,7 +2,7 @@ export { extractPdf } from "./pdf.js";
 export { extractDocx } from "./docx.js";
 export { extractLatex } from "./latex.js";
 export { ocrFallback } from "./ocr.js";
-export { extractHeaderMetadata } from "./metadata.js";
+export { extractHeaderMetadata } from "./metadata/index.js";
 export { locateAndSplitReferences, regexStructure } from "./refs.js";
 export {
   DeepseekLlmClient,

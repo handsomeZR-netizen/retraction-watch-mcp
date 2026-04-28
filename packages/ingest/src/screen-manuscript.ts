@@ -16,7 +16,7 @@ import {
 import { extractDocx } from "./docx.js";
 import { extractLatex } from "./latex.js";
 import { extractPdf } from "./pdf.js";
-import { extractHeaderMetadata } from "./metadata.js";
+import { extractHeaderMetadata } from "./metadata/index.js";
 import { locateAndSplitReferences, regexStructure } from "./refs.js";
 import { DeepseekLlmClient, type LlmConfig } from "./llm-client.js";
 import { ocrFallback } from "./ocr.js";
