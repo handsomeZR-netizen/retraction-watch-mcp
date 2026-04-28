@@ -180,12 +180,81 @@ export function listAllUsers(): UserRow[] {
     .all() as UserRow[];
 }
 
+export interface AdminUserRow {
+  id: string;
+  username: string;
+  display_name: string | null;
+  role: "user" | "admin";
+  created_at: string;
+  last_login_at: string | null;
+  disabled: 0 | 1;
+  avatar_seed: string | null;
+}
+
+export function listUsersForAdmin(options: {
+  search?: string | null;
+  limit?: number;
+  offset?: number;
+} = {}): AdminUserRow[] {
+  const limit = Math.max(1, Math.min(100, options.limit ?? 50));
+  const offset = Math.max(0, options.offset ?? 0);
+  const { whereSql, params } = adminUsersWhere(options.search);
+  return getAppDb()
+    .prepare(
+      `SELECT id, username, display_name, role, created_at, last_login_at, disabled, avatar_seed
+         FROM users
+        ${whereSql}
+        ORDER BY created_at DESC
+        LIMIT ? OFFSET ?`,
+    )
+    .all(...params, limit, offset) as AdminUserRow[];
+}
+
+export function countUsersForAdmin(search?: string | null): number {
+  const { whereSql, params } = adminUsersWhere(search);
+  const row = getAppDb()
+    .prepare(`SELECT COUNT(*) AS n FROM users ${whereSql}`)
+    .get(...params) as { n: number };
+  return row.n;
+}
+
+function adminUsersWhere(search?: string | null): {
+  whereSql: string;
+  params: string[];
+} {
+  const q = search?.trim().toLowerCase();
+  if (!q) return { whereSql: "", params: [] };
+  const like = `%${q}%`;
+  return {
+    whereSql:
+      "WHERE LOWER(username) LIKE ? OR LOWER(COALESCE(display_name, '')) LIKE ? OR LOWER(COALESCE(email, '')) LIKE ?",
+    params: [like, like, like],
+  };
+}
+
 export function setUserDisabled(userId: string, disabled: boolean): void {
   getAppDb()
     .prepare(
       "UPDATE users SET disabled = ?, session_version = session_version + 1 WHERE id = ?",
     )
     .run(disabled ? 1 : 0, userId);
+}
+
+export function setUserRoleForAdmin(userId: string, role: "user" | "admin"): void {
+  getAppDb()
+    .prepare("UPDATE users SET role = ?, session_version = session_version + 1 WHERE id = ?")
+    .run(role, userId);
+}
+
+export function forceLogoutUserForAdmin(userId: string): void {
+  bumpSessionVersion(userId);
+}
+
+export function countActiveAdmins(): number {
+  const row = getAppDb()
+    .prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND disabled = 0")
+    .get() as { n: number };
+  return row.n;
 }
 
 export function findUserByUsername(username: string): UserRow | null {
