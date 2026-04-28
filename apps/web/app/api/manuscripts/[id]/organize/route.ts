@@ -1,0 +1,53 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { requireUser } from "@/lib/auth/guard";
+import { canAccessManuscript } from "@/lib/auth/scope";
+import { getManuscript, setManuscriptArchived, setManuscriptProject } from "@/lib/db/manuscripts";
+import { getProject } from "@/lib/db/projects";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+const Schema = z.object({
+  projectId: z.string().nullable().optional(),
+  archived: z.boolean().optional(),
+});
+
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const auth = await requireUser();
+  if ("response" in auth) return auth.response;
+  const { id } = await params;
+  const row = getManuscript(id);
+  if (!row || !canAccessManuscript(auth.user, row)) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "请求体必须是 JSON" }, { status: 400 });
+  }
+  const parsed = Schema.safeParse(body);
+  if (!parsed.success) return NextResponse.json({ error: "字段不合法" }, { status: 400 });
+
+  if (parsed.data.projectId !== undefined) {
+    if (parsed.data.projectId === null) {
+      setManuscriptProject(id, null);
+    } else {
+      const project = getProject(parsed.data.projectId);
+      if (!project) return NextResponse.json({ error: "project not found" }, { status: 404 });
+      // Project scope must match manuscript scope.
+      if ((project.workspace_id ?? null) !== (row.workspace_id ?? null)) {
+        return NextResponse.json({ error: "project scope mismatch" }, { status: 400 });
+      }
+      setManuscriptProject(id, project.id);
+    }
+  }
+  if (parsed.data.archived !== undefined) {
+    setManuscriptArchived(id, parsed.data.archived);
+  }
+  return NextResponse.json({ ok: true });
+}

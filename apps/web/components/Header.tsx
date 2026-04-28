@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { HealthIndicator } from "@/components/HealthIndicator";
 import { UserMenu } from "@/components/UserMenu";
+import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -16,41 +17,49 @@ const NAV = [
   { href: "/settings", label: "设置" },
 ];
 
-export function Header() {
+export function Header({ sidebarMode = false }: { sidebarMode?: boolean }) {
   const pathname = usePathname();
   return (
     <header className="sticky top-0 z-30 w-full border-b border-border/40 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="max-w-6xl mx-auto px-6 h-14 flex items-center gap-6">
-        <Link href="/" className="flex items-center gap-2.5">
-          <span
-            aria-hidden
-            className="grid h-7 w-7 place-items-center rounded-md bg-foreground text-background text-[11px] font-bold tracking-wider"
-          >
-            RW
-          </span>
-          <span className="text-base font-semibold tracking-tight">
-            RW Screen
-          </span>
-        </Link>
-
-        <nav className="flex items-center gap-5 text-sm font-medium">
-          {NAV.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={cn(
-                "transition-colors hover:text-foreground",
-                pathname === link.href
-                  ? "text-foreground"
-                  : "text-muted-foreground",
-              )}
+      <div
+        className={cn(
+          "h-14 flex items-center gap-6",
+          sidebarMode ? "px-6" : "max-w-6xl mx-auto px-6",
+        )}
+      >
+        {!sidebarMode && (
+          <Link href="/" className="flex items-center gap-2.5">
+            <span
+              aria-hidden
+              className="grid h-7 w-7 place-items-center rounded-md bg-foreground text-background text-[11px] font-bold tracking-wider"
             >
-              {link.label}
-            </Link>
-          ))}
-        </nav>
+              RW
+            </span>
+            <span className="text-base font-semibold tracking-tight">
+              RW Screen
+            </span>
+          </Link>
+        )}
 
-        <div className="ml-auto flex items-center gap-2">
+        {!sidebarMode && (
+          <nav className="flex items-center gap-5 text-sm font-medium">
+            {NAV.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={cn(
+                  "transition-colors hover:text-foreground",
+                  pathname === link.href ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+        )}
+
+        <div className={cn("flex items-center gap-2", sidebarMode ? "ml-auto" : "ml-auto")}>
+          <WorkspaceSwitcher />
           <HealthIndicator />
           <Button variant="ghost" size="icon" asChild>
             <a

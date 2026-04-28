@@ -16,8 +16,21 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const limit = Math.max(1, Math.min(100, Number(url.searchParams.get("limit") ?? 50)));
   const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0));
+  const archivedParam = url.searchParams.get("archived");
+  const projectParam = url.searchParams.get("project");
+  const opts: {
+    limit: number;
+    offset: number;
+    archived?: boolean;
+    projectId?: string | null;
+  } = { limit, offset };
+  if (archivedParam === "true" || archivedParam === "1") opts.archived = true;
+  else if (archivedParam === "false" || archivedParam === "0") opts.archived = false;
+  if (projectParam === "none") opts.projectId = null;
+  else if (projectParam) opts.projectId = projectParam;
+
   const scope = activeScope(user);
-  const items = listManuscriptsForScope(scope, { limit, offset }).map((row) => ({
+  const items = listManuscriptsForScope(scope, opts).map((row) => ({
     id: row.id,
     fileName: row.file_name,
     fileType: row.file_type,
@@ -28,10 +41,15 @@ export async function GET(req: Request) {
     title: row.metadata_title,
     totals: row.totals_json ? (JSON.parse(row.totals_json) as Record<string, number>) : null,
     error: row.error,
+    projectId: row.project_id,
+    archived: row.archived === 1,
   }));
   return NextResponse.json({
     items,
-    total: countManuscriptsForScope(scope),
+    total: countManuscriptsForScope(scope, {
+      archived: opts.archived,
+      projectId: opts.projectId,
+    }),
     limit,
     offset,
     scope,

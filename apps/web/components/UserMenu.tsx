@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   CaretDown,
   ClockCounterClockwise,
@@ -33,21 +33,47 @@ interface Me {
 
 export function UserMenu() {
   const router = useRouter();
+  const pathname = usePathname();
   const [me, setMe] = useState<Me | null>(null);
 
-  useEffect(() => {
-    void fetch("/api/auth/me").then(async (res) => {
-      if (!res.ok) return;
-      const j = (await res.json()) as { user: Me | null };
-      if (!j.user) return;
-      setMe(j.user);
-      const profileRes = await fetch("/api/account/profile");
-      if (profileRes.ok) {
-        const p = (await profileRes.json()) as { avatarSeed?: string };
-        setMe((prev) => (prev ? { ...prev, avatarSeed: p.avatarSeed ?? prev.username } : prev));
-      }
-    });
+  const refresh = useCallback(async () => {
+    const res = await fetch("/api/auth/me", { cache: "no-store" });
+    if (!res.ok) {
+      setMe(null);
+      return;
+    }
+    const j = (await res.json()) as { user: Me | null };
+    if (!j.user) {
+      setMe(null);
+      return;
+    }
+    const profileRes = await fetch("/api/account/profile", { cache: "no-store" });
+    let avatarSeed: string | undefined;
+    if (profileRes.ok) {
+      const p = (await profileRes.json()) as { avatarSeed?: string };
+      avatarSeed = p.avatarSeed;
+    }
+    setMe({ ...j.user, avatarSeed: avatarSeed ?? j.user.username });
   }, []);
+
+  // Refetch on pathname change so post-login / post-logout navigation
+  // syncs the displayed user immediately. Also reacts to a custom
+  // "rw:auth-changed" event for in-page state changes.
+  useEffect(() => {
+    void refresh();
+  }, [refresh, pathname]);
+
+  useEffect(() => {
+    function onAuthChanged() {
+      void refresh();
+    }
+    window.addEventListener("rw:auth-changed", onAuthChanged);
+    window.addEventListener("focus", onAuthChanged);
+    return () => {
+      window.removeEventListener("rw:auth-changed", onAuthChanged);
+      window.removeEventListener("focus", onAuthChanged);
+    };
+  }, [refresh]);
 
   if (!me) return null;
 
@@ -55,6 +81,10 @@ export function UserMenu() {
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
+    setMe(null);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("rw:auth-changed"));
+    }
     router.push("/login");
     router.refresh();
   }

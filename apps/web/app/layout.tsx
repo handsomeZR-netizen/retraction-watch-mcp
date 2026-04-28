@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Noto_Sans_SC } from "next/font/google";
 import "./globals.css";
-import { Header } from "@/components/Header";
+import { AppShell } from "@/components/AppShell";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -36,20 +36,7 @@ export default function RootLayout({
     >
       <body className="font-sans">
         <ThemeProvider>
-          <div className="relative flex min-h-screen flex-col">
-            <Header />
-            <main className="flex-1 max-w-6xl w-full mx-auto px-6 py-10">
-              {children}
-            </main>
-            <footer className="border-t border-border/40">
-              <div className="max-w-6xl mx-auto px-6 py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-muted-foreground">
-                <span>
-                  © RW Screen · 仅辅助筛查，不作为学术不端裁定的终审依据
-                </span>
-                <span className="font-mono">v0.2.0-dev</span>
-              </div>
-            </footer>
-          </div>
+          <AppShell>{children}</AppShell>
           <Toaster />
         </ThemeProvider>
       </body>

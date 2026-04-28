@@ -24,6 +24,7 @@ function migrate(db: DB): void {
   if (current < 2) applyV2(db);
   if (current < 3) applyV3(db);
   if (current < 4) applyV4(db);
+  if (current < 5) applyV5(db);
 }
 
 function applyV1(db: DB): void {
@@ -199,5 +200,30 @@ function applyV4(db: DB): void {
     CREATE INDEX IF NOT EXISTS idx_manuscripts_sha256 ON manuscripts(sha256);
 
     PRAGMA user_version = 4;
+  `);
+}
+
+function applyV5(db: DB): void {
+  const cols = (db.prepare("PRAGMA table_info(manuscripts)").all() as { name: string }[]).map(
+    (r) => r.name,
+  );
+  if (!cols.includes("project_id")) db.exec("ALTER TABLE manuscripts ADD COLUMN project_id TEXT");
+  if (!cols.includes("archived"))
+    db.exec("ALTER TABLE manuscripts ADD COLUMN archived INTEGER NOT NULL DEFAULT 0");
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS projects (
+      id           TEXT PRIMARY KEY,
+      name         TEXT NOT NULL,
+      color        TEXT,
+      owner_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      workspace_id TEXT,
+      created_at   TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_projects_owner ON projects(owner_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_projects_workspace ON projects(workspace_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_manuscripts_project ON manuscripts(project_id);
+    CREATE INDEX IF NOT EXISTS idx_manuscripts_archived ON manuscripts(archived, uploaded_at DESC);
+    PRAGMA user_version = 5;
   `);
 }

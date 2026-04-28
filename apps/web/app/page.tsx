@@ -1,20 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dropzone } from "@/components/Dropzone";
-import { ParseOverlay } from "@/components/ParseOverlay";
-import {
-  ProgressTimeline,
-  type TimelineEvent,
-} from "@/components/ProgressTimeline";
-import { Badge } from "@/components/ui/badge";
 import { QuickActions } from "@/components/dashboard/QuickActions";
 import { RecentList } from "@/components/dashboard/RecentList";
 import { ScopeBanner } from "@/components/dashboard/ScopeBanner";
 import { StatsRow } from "@/components/dashboard/StatsRow";
+import { useSessions } from "@/components/sessions/SessionsContext";
 
 interface Dashboard {
   user: {
@@ -50,18 +44,12 @@ interface Dashboard {
 }
 
 export default function HomePage() {
-  const router = useRouter();
+  const sessions = useSessions();
   const [data, setData] = useState<Dashboard | null>(null);
-  const [events, setEvents] = useState<TimelineEvent[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [fileLabel, setFileLabel] = useState<string | null>(null);
-  const [transitioning, setTransitioning] = useState(false);
-  const sseRef = useRef<EventSource | null>(null);
 
   const loadDashboard = useCallback(async () => {
     try {
-      const res = await fetch("/api/dashboard");
+      const res = await fetch("/api/dashboard", { cache: "no-store" });
       if (res.ok) {
         const j = (await res.json()) as Dashboard;
         setData(j);
@@ -73,99 +61,19 @@ export default function HomePage() {
 
   useEffect(() => {
     void loadDashboard();
-  }, [loadDashboard]);
-
-  useEffect(() => () => sseRef.current?.close(), []);
+  }, [loadDashboard, sessions.refreshToken]);
 
   const onDrop = useCallback(
     async (files: File[]) => {
-      const file = files[0];
-      if (!file) return;
-      setBusy(true);
-      setError(null);
-      setFileLabel(`${file.name} · ${(file.size / 1024).toFixed(1)} KB`);
-      setEvents([{ stage: "uploaded", message: `已接收 ${file.name}` }]);
-
-      try {
-        const formData = new FormData();
-        formData.append("file", file);
-        const uploadRes = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-        if (!uploadRes.ok) throw new Error(await uploadRes.text());
-        const uploadJson = (await uploadRes.json()) as {
-          manuscriptId: string;
-          deduped?: boolean;
-        };
-        const { manuscriptId } = uploadJson;
-
-        if (uploadJson.deduped) {
-          setEvents((prev) => [
-            ...prev,
-            {
-              stage: "done",
-              message: "已识别为重复上传，复用历史报告",
-              detail: { deduped: true },
-            },
-          ]);
-          setTransitioning(true);
-          router.prefetch(`/result/${encodeURIComponent(manuscriptId)}`);
-          setTimeout(
-            () => router.push(`/result/${encodeURIComponent(manuscriptId)}`),
-            500,
-          );
-          return;
-        }
-
-        const sse = new EventSource(
-          `/api/parse?manuscriptId=${encodeURIComponent(manuscriptId)}`,
-        );
-        sseRef.current = sse;
-        sse.onmessage = (ev) => {
-          if (!ev.data) return;
-          try {
-            const payload = JSON.parse(ev.data) as TimelineEvent;
-            setEvents((prev) => [...prev, payload]);
-            if (payload.stage === "done") {
-              sse.close();
-              sseRef.current = null;
-              setTransitioning(true);
-              router.prefetch(`/result/${encodeURIComponent(manuscriptId)}`);
-              setTimeout(
-                () =>
-                  router.push(`/result/${encodeURIComponent(manuscriptId)}`),
-                700,
-              );
-            }
-            if (payload.stage === "error") {
-              sse.close();
-              sseRef.current = null;
-              setBusy(false);
-              setError(payload.message ?? "解析失败");
-            }
-          } catch {
-            // ignore
-          }
-        };
-        sse.onerror = () => {
-          sse.close();
-          sseRef.current = null;
-          setBusy(false);
-          setError("SSE 连接断开");
-        };
-      } catch (e) {
-        setBusy(false);
-        setError(e instanceof Error ? e.message : String(e));
+      for (const file of files) {
+        await sessions.start({ file });
       }
     },
-    [router],
+    [sessions],
   );
 
   return (
     <div className="space-y-8">
-      {transitioning && fileLabel && <ParseOverlay fileName={fileLabel} />}
-
       <section className="grid lg:grid-cols-[1.4fr_1fr] gap-8 items-start">
         <div>
           {data ? (
@@ -192,8 +100,12 @@ export default function HomePage() {
         <div className="lg:sticky lg:top-20">
           <Dropzone
             onDrop={onDrop}
-            busy={busy}
-            hint={fileLabel ?? undefined}
+            busy={sessions.active.some((s) => s.status === "uploading" || s.status === "parsing")}
+            hint={
+              sessions.active.length > 0
+                ? `进行中：${sessions.active.length} 个会话`
+                : "拖入 PDF / Word / LaTeX；可同时拖多份"
+            }
           />
         </div>
       </section>
@@ -208,23 +120,12 @@ export default function HomePage() {
         </div>
       )}
 
-      {error && (
+      {sessions.active.some((s) => s.status === "error") && (
         <Card className="border-destructive/50 bg-destructive/5 p-4 text-sm text-destructive animate-fade-in-up">
-          {error}
-        </Card>
-      )}
-
-      {events.length > 0 && (
-        <Card className="p-6 animate-fade-in-up">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold">解析进度</h2>
-            {fileLabel && (
-              <Badge variant="muted" className="font-mono text-[11px]">
-                {fileLabel}
-              </Badge>
-            )}
-          </div>
-          <ProgressTimeline events={events} />
+          {sessions.active
+            .filter((s) => s.status === "error")
+            .map((s) => `${s.fileName}：${s.error ?? "解析失败"}`)
+            .join("\n")}
         </Card>
       )}
 
@@ -237,11 +138,7 @@ export default function HomePage() {
           )}
         </div>
         <div>
-          {data ? (
-            <QuickActions role={data.user.role} />
-          ) : (
-            <Skeleton className="h-56 w-full" />
-          )}
+          {data ? <QuickActions role={data.user.role} /> : <Skeleton className="h-56 w-full" />}
         </div>
       </section>
     </div>

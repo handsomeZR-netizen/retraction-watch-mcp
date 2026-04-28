@@ -44,6 +44,9 @@ function LoginForm() {
         setBusy(false);
         return;
       }
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("rw:auth-changed"));
+      }
       router.push(redirect);
       router.refresh();
     } catch (err) {

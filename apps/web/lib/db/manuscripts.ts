@@ -17,6 +17,20 @@ export interface ManuscriptRow {
   policy_version: string | null;
   generated_at: string | null;
   error: string | null;
+  project_id: string | null;
+  archived: number;
+}
+
+export function setManuscriptProject(id: string, projectId: string | null): void {
+  getAppDb()
+    .prepare("UPDATE manuscripts SET project_id = ? WHERE id = ?")
+    .run(projectId, id);
+}
+
+export function setManuscriptArchived(id: string, archived: boolean): void {
+  getAppDb()
+    .prepare("UPDATE manuscripts SET archived = ? WHERE id = ?")
+    .run(archived ? 1 : 0, id);
 }
 
 export function insertManuscript(row: {
@@ -102,47 +116,64 @@ export function getManuscript(id: string): ManuscriptRow | null {
   return row ?? null;
 }
 
+interface ListOptions {
+  limit?: number;
+  offset?: number;
+  archived?: boolean;
+  projectId?: string | null;  // null → "no project"; undefined → all
+}
+
+function buildScopeWhere(
+  scope: { userId: string; workspaceId: string | null },
+  options: ListOptions,
+): { sql: string; params: unknown[] } {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  if (scope.workspaceId) {
+    clauses.push("workspace_id = ?");
+    params.push(scope.workspaceId);
+  } else {
+    clauses.push("user_id = ?");
+    clauses.push("workspace_id IS NULL");
+    params.push(scope.userId);
+  }
+  if (options.archived !== undefined) {
+    clauses.push("archived = ?");
+    params.push(options.archived ? 1 : 0);
+  }
+  if (options.projectId !== undefined) {
+    if (options.projectId === null) {
+      clauses.push("project_id IS NULL");
+    } else {
+      clauses.push("project_id = ?");
+      params.push(options.projectId);
+    }
+  }
+  return { sql: clauses.join(" AND "), params };
+}
+
 export function listManuscriptsForScope(
   scope: { userId: string; workspaceId: string | null },
-  options: { limit?: number; offset?: number } = {},
+  options: ListOptions = {},
 ): ManuscriptRow[] {
   const limit = options.limit ?? 50;
   const offset = options.offset ?? 0;
-  if (scope.workspaceId) {
-    return getAppDb()
-      .prepare(
-        `SELECT * FROM manuscripts
-         WHERE workspace_id = ?
-         ORDER BY uploaded_at DESC
-         LIMIT ? OFFSET ?`,
-      )
-      .all(scope.workspaceId, limit, offset) as ManuscriptRow[];
-  }
+  const { sql, params } = buildScopeWhere(scope, options);
   return getAppDb()
     .prepare(
-      `SELECT * FROM manuscripts
-       WHERE user_id = ? AND workspace_id IS NULL
-       ORDER BY uploaded_at DESC
-       LIMIT ? OFFSET ?`,
+      `SELECT * FROM manuscripts WHERE ${sql} ORDER BY uploaded_at DESC LIMIT ? OFFSET ?`,
     )
-    .all(scope.userId, limit, offset) as ManuscriptRow[];
+    .all(...params, limit, offset) as ManuscriptRow[];
 }
 
-export function countManuscriptsForScope(scope: {
-  userId: string;
-  workspaceId: string | null;
-}): number {
-  if (scope.workspaceId) {
-    const r = getAppDb()
-      .prepare("SELECT COUNT(*) AS n FROM manuscripts WHERE workspace_id = ?")
-      .get(scope.workspaceId) as { n: number };
-    return r.n;
-  }
+export function countManuscriptsForScope(
+  scope: { userId: string; workspaceId: string | null },
+  options: Omit<ListOptions, "limit" | "offset"> = {},
+): number {
+  const { sql, params } = buildScopeWhere(scope, options);
   const r = getAppDb()
-    .prepare(
-      "SELECT COUNT(*) AS n FROM manuscripts WHERE user_id = ? AND workspace_id IS NULL",
-    )
-    .get(scope.userId) as { n: number };
+    .prepare(`SELECT COUNT(*) AS n FROM manuscripts WHERE ${sql}`)
+    .get(...params) as { n: number };
   return r.n;
 }
 

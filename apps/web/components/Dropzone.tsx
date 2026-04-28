@@ -13,7 +13,8 @@ interface DropzoneProps {
 export function Dropzone({ onDrop, busy, hint }: DropzoneProps) {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    multiple: false,
+    multiple: true,
+    maxFiles: 8,
     accept: {
       "application/pdf": [".pdf"],
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],

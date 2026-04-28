@@ -34,6 +34,8 @@ export async function POST(req: Request) {
   if (fileType === "unknown") {
     return NextResponse.json({ error: "unsupported file type" }, { status: 415 });
   }
+  const projectIdRaw = formData.get("projectId");
+  const projectId = typeof projectIdRaw === "string" && projectIdRaw.trim() ? projectIdRaw.trim() : null;
   const manuscriptId = randomUUID();
   const safeName = file.name.replace(/[^A-Za-z0-9._一-鿿-]+/g, "_");
   const record = await saveUpload({
@@ -77,6 +79,14 @@ export async function POST(req: Request) {
     bytes: record.bytes,
     sha256: record.sha256,
   });
+  if (projectId) {
+    const { setManuscriptProject } = await import("@/lib/db/manuscripts");
+    const { getProject } = await import("@/lib/db/projects");
+    const project = getProject(projectId);
+    if (project && (project.workspace_id ?? null) === (scope.workspaceId ?? null)) {
+      setManuscriptProject(manuscriptId, project.id);
+    }
+  }
   writeAudit({
     userId: user.id,
     action: "upload",

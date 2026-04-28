@@ -33,6 +33,9 @@ export default function RegisterPage() {
         setBusy(false);
         return;
       }
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("rw:auth-changed"));
+      }
       router.push("/");
       router.refresh();
     } catch (err) {
