@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth/guard";
-import { canAccessManuscript } from "@/lib/auth/scope";
+import { canAccessManuscript, canManageManuscript } from "@/lib/auth/scope";
 import { getRequestIp } from "@/lib/auth/validate";
 import { writeAudit } from "@/lib/db/audit";
 import {
@@ -63,6 +63,10 @@ export async function PUT(
   const row = getManuscript(id);
   if (!row || !canAccessManuscript(auth.user, row)) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+  // Reassign is a management action — only uploader or workspace owner/admin.
+  if (!canManageManuscript(auth.user, row)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   let body: unknown;
   try {

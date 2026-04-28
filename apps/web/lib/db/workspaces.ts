@@ -125,9 +125,19 @@ export function addMember(input: {
 }
 
 export function removeMember(workspaceId: string, userId: string): void {
-  getAppDb()
-    .prepare("DELETE FROM workspace_members WHERE workspace_id = ? AND user_id = ?")
-    .run(workspaceId, userId);
+  const db = getAppDb();
+  const tx = db.transaction(() => {
+    db.prepare(
+      "DELETE FROM workspace_members WHERE workspace_id = ? AND user_id = ?",
+    ).run(workspaceId, userId);
+    // Clear any assignee references this user has on manuscripts in this
+    // workspace — sqlite has no FK on assignee_user_id so we maintain
+    // referential integrity by hand here.
+    db.prepare(
+      "UPDATE manuscripts SET assignee_user_id = NULL WHERE workspace_id = ? AND assignee_user_id = ?",
+    ).run(workspaceId, userId);
+  });
+  tx();
 }
 
 export function setMemberRole(
@@ -214,6 +224,10 @@ export function deleteWorkspace(id: string): void {
   const tx = db.transaction(() => {
     // Manuscripts have no FK on workspace_id; revert them to the uploader's personal scope.
     db.prepare("UPDATE manuscripts SET workspace_id = NULL WHERE workspace_id = ?").run(id);
+    // Personal-scope manuscripts cannot have assignees, so clear those too.
+    db.prepare(
+      "UPDATE manuscripts SET assignee_user_id = NULL WHERE workspace_id IS NULL AND assignee_user_id IS NOT NULL",
+    ).run();
     db.prepare("UPDATE users SET active_workspace_id = NULL WHERE active_workspace_id = ?").run(id);
     db.prepare("DELETE FROM workspaces WHERE id = ?").run(id);
   });

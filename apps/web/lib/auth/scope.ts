@@ -28,3 +28,16 @@ export function canDeleteManuscript(user: CurrentUser, manuscript: ManuscriptRow
   }
   return manuscript.user_id === user.id;
 }
+
+/**
+ * "Manage" rights — share-link mint/revoke and reviewer assignment. Stricter
+ * than canAccessManuscript: any random workspace member should not be able to
+ * mint external links or reassign reviewers. Same matrix as
+ * canDeleteManuscript: uploader OR workspace owner/admin.
+ */
+export function canManageManuscript(
+  user: CurrentUser,
+  manuscript: ManuscriptRow,
+): boolean {
+  return canDeleteManuscript(user, manuscript);
+}

@@ -22,6 +22,8 @@ import { ShareLinkManager } from "@/components/ShareLinkManager";
 import { ResultLayout } from "@/components/ResultLayout";
 import { VerdictCard } from "@/components/VerdictCard";
 import { Separator } from "@/components/ui/separator";
+import { requireUser } from "@/lib/auth/guard";
+import { canAccessManuscript } from "@/lib/auth/scope";
 import { getManuscript } from "@/lib/db/manuscripts";
 import { getResult } from "@/lib/store";
 
@@ -32,10 +34,17 @@ export default async function ResultPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  // Server-side scope guard: middleware only checks the session is valid,
+  // not that THIS user can access THIS manuscript. Without this, any logged-
+  // in user could navigate to /result/{any-uuid} and see private result +
+  // notes belonging to someone else's manuscript.
+  const auth = await requireUser();
+  if ("response" in auth) return auth.response;
   const { id } = await params;
+  const manuscript = getManuscript(id);
+  if (!manuscript || !canAccessManuscript(auth.user, manuscript)) notFound();
   const result = await getResult(id);
   if (!result) notFound();
-  const manuscript = getManuscript(id);
 
   return (
     <div className="space-y-6">

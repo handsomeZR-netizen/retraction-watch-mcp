@@ -84,7 +84,24 @@ function createNextConfig(phase) {
       "/api/**": buildRuntimeTraceExcludes,
     },
     async headers() {
-      return [{ source: "/:path*", headers: securityHeaders }];
+      return [
+        { source: "/:path*", headers: securityHeaders },
+        // Share-link pages and their JSON endpoint must not be crawled.
+        // Unguessable tokens are still confidential — search engines and
+        // social previews shouldn't index or archive them.
+        {
+          source: "/share/:token*",
+          headers: [
+            { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
+          ],
+        },
+        {
+          source: "/api/share/:token*",
+          headers: [
+            { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
+          ],
+        },
+      ];
     },
   };
 }

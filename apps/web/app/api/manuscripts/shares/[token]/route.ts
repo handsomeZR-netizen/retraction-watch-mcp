@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
-import { canAccessManuscript } from "@/lib/auth/scope";
+import { canAccessManuscript, canManageManuscript } from "@/lib/auth/scope";
 import { getRequestIp } from "@/lib/auth/validate";
 import { writeAudit } from "@/lib/db/audit";
 import {
@@ -28,6 +28,11 @@ export async function DELETE(
   const row = getManuscript(share.manuscript_id);
   if (!row || !canAccessManuscript(auth.user, row)) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+  // Stricter than canAccess: revoking is a management action, only uploader
+  // or workspace owner/admin.
+  if (!canManageManuscript(auth.user, row)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   const ok = revokeShare(token);
   // Returning the updated list saves the UI a second roundtrip.

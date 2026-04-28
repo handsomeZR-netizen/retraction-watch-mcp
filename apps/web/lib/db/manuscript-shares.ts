@@ -45,6 +45,23 @@ export function createShare(input: {
   };
 }
 
+/**
+ * Count of currently active (not revoked, not expired) share tokens for a
+ * manuscript. Used to enforce per-manuscript caps at the API layer.
+ */
+export function countActiveSharesForManuscript(manuscriptId: string): number {
+  const now = new Date().toISOString();
+  const r = getAppDb()
+    .prepare(
+      `SELECT COUNT(*) AS n FROM manuscript_shares
+        WHERE manuscript_id = ?
+          AND revoked_at IS NULL
+          AND expires_at >= ?`,
+    )
+    .get(manuscriptId, now) as { n: number };
+  return r.n;
+}
+
 export function listSharesForManuscript(manuscriptId: string): ManuscriptShareRow[] {
   return getAppDb()
     .prepare(
