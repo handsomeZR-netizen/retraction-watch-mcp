@@ -7,7 +7,7 @@ import { Header } from "@/components/Header";
 import { SessionsProvider } from "@/components/sessions/SessionsContext";
 
 const PUBLIC_PATHS = new Set(["/login", "/register", "/forgot"]);
-const PUBLIC_PREFIXES = ["/reset/", "/verify/", "/invite/"];
+const PUBLIC_PREFIXES = ["/reset/", "/verify/", "/invite/", "/share/"];
 
 function isPublicRoute(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
@@ -41,8 +41,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, [pathname]);
 
-  // Public routes: minimal layout (no sidebar, no header).
+  // Public routes: minimal layout (no sidebar, no header). The /share/[token]
+  // pages need full width to render the result; auth pages stay in a centered
+  // narrow column.
   if (isPublicRoute(pathname)) {
+    if (pathname.startsWith("/share/")) {
+      return (
+        <div className="min-h-screen px-4 py-8 max-w-5xl mx-auto">{children}</div>
+      );
+    }
     return (
       <div className="min-h-screen flex items-center justify-center px-4 py-10">
         <div className="w-full max-w-md">{children}</div>

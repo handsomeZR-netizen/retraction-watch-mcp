@@ -39,7 +39,7 @@ const PUBLIC_PATHS = new Set([
   "/forgot",
 ]);
 
-const PUBLIC_PATH_PREFIXES = ["/reset/", "/verify/", "/invite/"];
+const PUBLIC_PATH_PREFIXES = ["/reset/", "/verify/", "/invite/", "/share/"];
 
 const PUBLIC_API_PREFIXES = [
   "/api/auth/login",
@@ -51,6 +51,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/auth/oauth",
   "/api/health",
   "/api/workspaces/invite/",
+  "/api/share/",
 ];
 
 // CSRF defense: state-changing API requests must declare a same-origin

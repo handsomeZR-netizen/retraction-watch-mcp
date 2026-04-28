@@ -23,9 +23,20 @@ export interface ManuscriptRow {
   notes: string | null;
   notes_updated_at: string | null;
   notes_updated_by: string | null;
+  assignee_user_id: string | null;
 }
 
 const NOTES_MAX_LENGTH = 4000;
+
+export function setManuscriptAssignee(
+  id: string,
+  assigneeUserId: string | null,
+): boolean {
+  const info = getAppDb()
+    .prepare("UPDATE manuscripts SET assignee_user_id = ? WHERE id = ?")
+    .run(assigneeUserId, id);
+  return info.changes > 0;
+}
 
 export function setManuscriptNotes(
   id: string,

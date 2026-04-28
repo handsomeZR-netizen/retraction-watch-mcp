@@ -13,10 +13,12 @@ import {
 } from "@phosphor-icons/react/dist/ssr";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { AssigneePicker } from "@/components/AssigneePicker";
 import { AuthorScreenBadge } from "@/components/AuthorScreenBadge";
 import { AuthorSummaryCard } from "@/components/AuthorSummaryCard";
 import { ManuscriptNotes } from "@/components/ManuscriptNotes";
 import { ReferenceTable } from "@/components/ReferenceTable";
+import { ShareLinkManager } from "@/components/ShareLinkManager";
 import { ResultLayout } from "@/components/ResultLayout";
 import { VerdictCard } from "@/components/VerdictCard";
 import { Separator } from "@/components/ui/separator";
@@ -90,6 +92,11 @@ export default async function ResultPage({
 
         <VerdictCard verdict={result.verdict} totals={result.totals} />
       </Card>
+
+      <section className="grid md:grid-cols-2 gap-4">
+        <AssigneePicker manuscriptId={id} />
+        <ShareLinkManager manuscriptId={id} />
+      </section>
 
       <ManuscriptNotes
         manuscriptId={id}

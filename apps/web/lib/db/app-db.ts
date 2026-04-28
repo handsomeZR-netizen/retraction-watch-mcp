@@ -34,6 +34,7 @@ function migrate(db: DB): void {
   if (current < 7) inTx(applyV7);
   if (current < 8) inTx(applyV8);
   if (current < 9) inTx(applyV9);
+  if (current < 10) inTx(applyV10);
 }
 
 function applyV1(db: DB): void {
@@ -251,6 +252,40 @@ function applyV7(db: DB): void {
     CREATE INDEX IF NOT EXISTS idx_screening_logs_created_id
       ON screening_logs(created_at DESC, id DESC);
     PRAGMA user_version = 7;
+  `);
+}
+
+function applyV10(db: DB): void {
+  // Two small-team workflow features:
+  //   1. assignee_user_id: per-manuscript reviewer assignment (workspace
+  //      scope only; references users(id) but ON DELETE SET NULL).
+  //   2. manuscript_shares: revocable read-only share tokens with TTL so a
+  //      reviewer outside the workspace can see a single result page
+  //      without an account.
+  const cols = (db.prepare("PRAGMA table_info(manuscripts)").all() as { name: string }[]).map(
+    (r) => r.name,
+  );
+  if (!cols.includes("assignee_user_id")) {
+    db.exec("ALTER TABLE manuscripts ADD COLUMN assignee_user_id TEXT");
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_manuscripts_assignee
+      ON manuscripts(assignee_user_id);
+
+    CREATE TABLE IF NOT EXISTS manuscript_shares (
+      token         TEXT PRIMARY KEY,
+      manuscript_id TEXT NOT NULL REFERENCES manuscripts(id) ON DELETE CASCADE,
+      created_by    TEXT REFERENCES users(id) ON DELETE SET NULL,
+      created_at    TEXT NOT NULL,
+      expires_at    TEXT NOT NULL,
+      revoked_at    TEXT,
+      last_viewed_at TEXT,
+      view_count    INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_shares_manuscript ON manuscript_shares(manuscript_id);
+    CREATE INDEX IF NOT EXISTS idx_shares_expiry ON manuscript_shares(expires_at);
+
+    PRAGMA user_version = 10;
   `);
 }
 
