@@ -87,6 +87,27 @@ describe("manuscript parse leases", () => {
     expect(row?.status).toBe("done");
     expect(row?.parse_job_id).toBeNull();
   });
+
+  it("recovers stale parsing rows on startup by releasing their leases", () => {
+    manuscripts.insertManuscript({
+      id: "m-stale",
+      userId: "user-1",
+      workspaceId: null,
+      fileName: "paper.pdf",
+      fileType: "pdf",
+      bytes: 123,
+      sha256: "sha-stale",
+    });
+    expect(manuscripts.acquireParseLease("m-stale", "job-stale")).toBe(true);
+
+    expect(manuscripts.recoverStaleParseLeases("server-restart-recovery")).toBe(1);
+
+    const row = manuscripts.getManuscript("m-stale");
+    expect(row?.status).toBe("error");
+    expect(row?.parse_job_id).toBeNull();
+    expect(row?.error).toBe("server-restart-recovery");
+    expect(manuscripts.acquireParseLease("m-stale", "job-retry")).toBe(true);
+  });
 });
 
 describe("manuscript sha256 dedup", () => {
@@ -151,6 +172,41 @@ describe("listManuscriptsByUser archived defaults", () => {
     expect(
       manuscripts.listManuscriptsByUser("user-1", { archived: true }).map((m) => m.id),
     ).toEqual(["m-archived"]);
+  });
+});
+
+describe("errored manuscript retention cutoff", () => {
+  it("includes errored rows exactly at the cutoff timestamp", () => {
+    manuscripts.insertManuscript({
+      id: "m-error-exact",
+      userId: "user-1",
+      workspaceId: null,
+      fileName: "exact.pdf",
+      fileType: "pdf",
+      bytes: 100,
+      sha256: "sha-error-exact",
+    });
+    manuscripts.insertManuscript({
+      id: "m-error-newer",
+      userId: "user-1",
+      workspaceId: null,
+      fileName: "newer.pdf",
+      fileType: "pdf",
+      bytes: 100,
+      sha256: "sha-error-newer",
+    });
+
+    const cutoff = new Date().toISOString();
+    db.prepare(
+      "UPDATE manuscripts SET status = 'error', uploaded_at = ? WHERE id = ?",
+    ).run(cutoff, "m-error-exact");
+    db.prepare(
+      "UPDATE manuscripts SET status = 'error', uploaded_at = ? WHERE id = ?",
+    ).run(new Date(Date.now() + 1).toISOString(), "m-error-newer");
+
+    expect(
+      manuscripts.listErroredManuscriptsOlderThan(cutoff).map((m) => m.id),
+    ).toEqual(["m-error-exact"]);
   });
 });
 

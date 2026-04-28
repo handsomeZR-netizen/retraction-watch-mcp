@@ -300,6 +300,6 @@ export function deleteManuscript(id: string): boolean {
 
 export function listErroredManuscriptsOlderThan(cutoffIso: string): ManuscriptRow[] {
   return getAppDb()
-    .prepare("SELECT * FROM manuscripts WHERE status = 'error' AND uploaded_at < ?")
+    .prepare("SELECT * FROM manuscripts WHERE status = 'error' AND uploaded_at <= ?")
     .all(cutoffIso) as ManuscriptRow[];
 }
