@@ -304,14 +304,15 @@ export function tokenOverlapScore(left: Set<string>, right: Set<string>): number
       intersection += 1;
     }
   }
-  // Use min-set as denominator (so "Harvard Medical" matches "Harvard Medical
-  // School" with score 1.0) but require at least 2 shared tokens whenever the
-  // smaller side has ≥2 tokens. This prevents a single distinctive token like
-  // "tsinghua" from scoring 1.0 against any record mentioning it, which would
-  // amplify common-name false positives into likely_match.
-  const minSize = Math.min(left.size, right.size);
-  if (minSize >= 2 && intersection < 2) return intersection / Math.max(left.size, right.size);
-  return intersection / minSize;
+  // Require at least 2 shared tokens to use the min-set denominator (so
+  // "Harvard Medical" still matches "Harvard Medical School" at 1.0). When
+  // intersection < 2 — including the single-token-query case where one side
+  // has only one token — fall back to the max-set denominator so a single
+  // distinctive token like "tsinghua" can't score 1.0 against any record
+  // that mentions it, which would amplify common-name false positives into
+  // likely_match.
+  if (intersection < 2) return intersection / Math.max(left.size, right.size);
+  return intersection / Math.min(left.size, right.size);
 }
 
 export function jaccardSimilarity(left: Set<string>, right: Set<string>): number {

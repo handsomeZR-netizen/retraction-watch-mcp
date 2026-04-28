@@ -99,11 +99,16 @@ export async function assertNoSymlinkLeak(
 export function sanitizeUploadFileName(fileName: string): string {
   // Take only the trailing component, even if the user submitted a path-like
   // string. Then replace anything that's not a letter/digit/dot/dash/underscore
-  // or CJK character with underscore. Reject empty results.
+  // or CJK character with underscore. Collapse runs of `.` and `_` so the
+  // displayed file_name doesn't keep `..` patterns from a path-traversal
+  // attempt (the disk write was already safe via assertWithinDir; this is
+  // about the value we surface to the UI / DB row).
   const leaf = path.basename(fileName.replace(/\\/g, "/"));
   const cleaned = leaf
-    .replace(/^\.+/, "_") // leading dots
+    .replace(/^\.+/, "_")
     .replace(/[^A-Za-z0-9._一-鿿-]+/g, "_")
+    .replace(/\.{2,}/g, ".")
+    .replace(/_{2,}/g, "_")
     .slice(0, 200);
   return cleaned || "upload.bin";
 }

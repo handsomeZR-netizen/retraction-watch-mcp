@@ -45,18 +45,29 @@ export function shouldMergeTitleContinuation(curr: string, next: string): boolea
   if (TITLE_NOISE_RE.test(next)) return false;
   if (next.length > 100) return false;
   if (/^abstract$/i.test(next)) return false;
+  // Hyphen-wrap is unambiguous evidence the title continues.
   if (curr.endsWith("-")) {
     return !looksLikeAuthorListLine(next);
   }
   if (looksLikeAuthorListLine(next)) return false;
   if (AFFILIATION_RE.test(next) && next.split(/\s+/).length <= 6) return false;
+  // Title broken on a function word: "BERT: ... Transformers for" + "Language Understanding".
   if (/\b(of|for|and|with|to|in|on|via|using|under|over|by)$/i.test(curr)) {
     return next.length <= 80;
   }
+  // Title-cased + no-terminal-punct case. To avoid merging an author byline
+  // ("Actual Research Title" + "Alice Smith"), require BOTH:
+  //   - curr is a long-ish title (≥6 tokens) — short titles followed by short
+  //     capitalized lines are almost always the author byline pattern
+  //   - next is a clear title continuation (≤4 tokens, no person-name shape)
+  // This still merges real wraps like "Learnable Graph ODE Networks for
+  // Anomaly Detection in CAN-FD" + "Vehicle Networks".
   const noTerminal = !/[.!?]$/.test(curr);
-  const nextLooksTitle = /^[A-Z\p{Lu}]/u.test(next) && next.split(/\s+/).length <= 8;
-  const currMostlyCap = mostlyCapitalized(curr);
-  return noTerminal && nextLooksTitle && currMostlyCap && next.length <= 60;
+  const nextTokens = next.split(/\s+/).filter(Boolean);
+  const nextLooksTitle = /^[A-Z\p{Lu}]/u.test(next) && nextTokens.length <= 4;
+  const currTokens = curr.split(/\s+/).filter(Boolean).length;
+  const currLongTitle = currTokens >= 6 && mostlyCapitalized(curr);
+  return noTerminal && nextLooksTitle && currLongTitle && next.length <= 60;
 }
 
 export function looksLikeAuthorListLine(line: string): boolean {

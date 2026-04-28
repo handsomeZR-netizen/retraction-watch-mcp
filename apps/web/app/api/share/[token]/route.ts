@@ -39,6 +39,10 @@ export async function GET(
 }
 
 function toShareDto(result: ManuscriptScreenResult) {
+  // Build the DTO so sensitive keys (email, orcid, evidence, candidates,
+  // nearMisses, abstract, network, sourceVersion, manuscriptId) are ABSENT
+  // — not present-but-null/empty. Even an empty array of `evidence` leaks
+  // the shape of the internal model.
   return {
     fileName: result.fileName,
     fileType: result.fileType,
@@ -49,51 +53,45 @@ function toShareDto(result: ManuscriptScreenResult) {
     consequentialUseWarning: result.consequentialUseWarning,
     metadata: {
       title: result.metadata.title,
-      authors: result.metadata.authors.map((a) => ({
-        name: a.name,
-        // Public viewer should NOT see contact details / ORCID — those belong
-        // to a logged-in workspace member.
-        affiliation: a.affiliation,
-        email: null,
-        orcid: null,
-      })),
+      authors: result.metadata.authors.map((a) => {
+        const out: { name: string; affiliation?: string } = { name: a.name };
+        if (a.affiliation) out.affiliation = a.affiliation;
+        return out;
+      }),
       doi: result.metadata.doi,
-      abstract: null,
     },
     screenedReferences: result.screenedReferences.map((r) => ({
-      reference: {
-        ...r.reference,
-      },
+      reference: { ...r.reference },
       result: {
         verdict: r.result.verdict,
         score: r.result.score,
         reviewRequired: r.result.reviewRequired,
         matchedFields: r.result.matchedFields,
-        // Strip evidence + candidates + nearMisses + policyVersion: those
-        // are internal scoring artifacts.
-        evidence: [],
         bestCandidate: r.result.bestCandidate
           ? { record: publicRecord(r.result.bestCandidate.record) }
           : null,
-        candidates: [],
-        nearMisses: [],
         input: r.result.input,
         policyVersion: r.result.policyVersion,
       },
     })),
-    screenedAuthors: result.screenedAuthors.map((a) => ({
-      author: {
-        name: a.author.name,
-        affiliation: a.author.affiliation,
-        email: null,
-        orcid: null,
-      },
-      verdict: a.verdict,
-      score: a.score,
-      matchedRecord: a.matchedRecord ? publicRecord(a.matchedRecord) : null,
-      matchedFields: a.matchedFields,
-      evidence: [],
-    })),
+    screenedAuthors: result.screenedAuthors.map((a) => {
+      const author: { name: string; affiliation?: string } = { name: a.author.name };
+      if (a.author.affiliation) author.affiliation = a.author.affiliation;
+      const out: {
+        author: typeof author;
+        verdict: typeof a.verdict;
+        score: number;
+        matchedFields: string[];
+        matchedRecord?: ReturnType<typeof publicRecord>;
+      } = {
+        author,
+        verdict: a.verdict,
+        score: a.score,
+        matchedFields: a.matchedFields,
+      };
+      if (a.matchedRecord) out.matchedRecord = publicRecord(a.matchedRecord);
+      return out;
+    }),
   };
 }
 
