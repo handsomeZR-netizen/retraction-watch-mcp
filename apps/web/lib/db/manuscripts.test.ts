@@ -87,6 +87,27 @@ describe("manuscript parse leases", () => {
     expect(row?.status).toBe("done");
     expect(row?.parse_job_id).toBeNull();
   });
+
+  it("recovers stale parsing rows on startup by releasing their leases", () => {
+    manuscripts.insertManuscript({
+      id: "m-stale",
+      userId: "user-1",
+      workspaceId: null,
+      fileName: "paper.pdf",
+      fileType: "pdf",
+      bytes: 123,
+      sha256: "sha-stale",
+    });
+    expect(manuscripts.acquireParseLease("m-stale", "job-stale")).toBe(true);
+
+    expect(manuscripts.recoverStaleParseLeases("server-restart-recovery")).toBe(1);
+
+    const row = manuscripts.getManuscript("m-stale");
+    expect(row?.status).toBe("error");
+    expect(row?.parse_job_id).toBeNull();
+    expect(row?.error).toBe("server-restart-recovery");
+    expect(manuscripts.acquireParseLease("m-stale", "job-retry")).toBe(true);
+  });
 });
 
 describe("manuscript sha256 dedup", () => {
