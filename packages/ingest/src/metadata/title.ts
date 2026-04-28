@@ -36,6 +36,14 @@ export function candidateLooksLikeTitle(line: string): boolean {
   if (/^doi[: ]/i.test(line)) return false;
   if (/^https?:\/\//i.test(line)) return false;
   if (AFFILIATION_RE.test(line) && line.split(/\s+/).length < 8) return false;
+  // CJK-dominant lines (no whitespace tokenization) of plausible title length
+  // are accepted directly. The Latin "≥2 tokens" rule below would otherwise
+  // reject Chinese titles like "深度学习中的对抗鲁棒性" and the next-line
+  // author byline would get promoted to title by mistake.
+  const cjkChars = (line.match(/[\u3400-\u9fff]/g) ?? []).length;
+  if (cjkChars >= 4 && cjkChars / line.length >= 0.5) {
+    return true;
+  }
   if (line.split(/\s+/).length < 2) return false;
   if (/^[a-z]/.test(line) && !/^[a-z]+\s+[A-Z]/.test(line)) return false;
   return true;

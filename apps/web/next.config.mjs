@@ -29,7 +29,8 @@ function createNextConfig(phase) {
   // tooling still requires them; nonce-based CSP is a separate refactor.
   const csp = [
     "default-src 'self'",
-    "img-src 'self' data: blob:",
+    // Dicebear is the avatar service used for user/workspace avatars.
+    "img-src 'self' data: blob: https://api.dicebear.com",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self' data:",

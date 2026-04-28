@@ -1,13 +1,28 @@
-const USERNAME_RE = /^[a-zA-Z0-9_.+\-@]{3,64}$/;
+// Username: Unicode letters/digits + a small ASCII-symbol subset for emails,
+// 3–64 chars (counted as code points). Rejects whitespace, control chars,
+// and emoji presentation selectors. Used by /api/auth/register and login.
+const USERNAME_DISALLOWED_RE = /[\s<>"\\\/|?*\u0000-\u001f\u007f]/;
+const USERNAME_ALLOWED_SYMBOL_ONLY_RE = /^[._+\-@]+$/;
 
 export function validateUsername(input: unknown): { ok: boolean; value?: string; reason?: string } {
   if (typeof input !== "string") return { ok: false, reason: "用户名必须是字符串" };
   const trimmed = input.trim();
-  if (!USERNAME_RE.test(trimmed)) {
+  // Code-point length so a CJK or accented character counts as 1, not 3.
+  const codePoints = [...trimmed];
+  if (codePoints.length < 3 || codePoints.length > 64) {
     return {
       ok: false,
-      reason: "用户名长度 3-64，可用字母数字、下划线、连字符、点、加号、@",
+      reason: "用户名长度需在 3 到 64 个字符之间",
     };
+  }
+  if (USERNAME_DISALLOWED_RE.test(trimmed)) {
+    return {
+      ok: false,
+      reason: "用户名不能包含空白或特殊符号 < > \" / \\ | ? *",
+    };
+  }
+  if (USERNAME_ALLOWED_SYMBOL_ONLY_RE.test(trimmed)) {
+    return { ok: false, reason: "用户名必须包含至少一个字母或数字" };
   }
   return { ok: true, value: trimmed };
 }
