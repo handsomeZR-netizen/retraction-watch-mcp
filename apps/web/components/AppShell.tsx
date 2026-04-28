@@ -78,7 +78,7 @@ function PrivateLayout({
     return (
       <div className="relative flex min-h-screen flex-col">
         <Header />
-        <main className="flex-1 max-w-6xl w-full mx-auto px-6 py-10">{children}</main>
+        <main className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 py-6 sm:py-10">{children}</main>
       </div>
     );
   }
@@ -92,11 +92,11 @@ function PrivateLayout({
       <AppSidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Header sidebarMode />
-        <main className="flex-1 w-full mx-auto px-6 py-8 max-w-5xl">{children}</main>
+        <main className="flex-1 w-full mx-auto px-3 sm:px-6 py-6 sm:py-8 max-w-5xl">{children}</main>
         <footer className="border-t border-border/40">
-          <div className="max-w-5xl mx-auto px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-muted-foreground">
+          <div className="max-w-5xl mx-auto px-3 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-muted-foreground">
             <span>© RW Screen · 仅辅助筛查，不作为学术不端裁定的终审依据</span>
-            <span className="font-mono">v0.2.0-dev</span>
+            <span className="font-mono">v0.3.0</span>
           </div>
         </footer>
       </div>

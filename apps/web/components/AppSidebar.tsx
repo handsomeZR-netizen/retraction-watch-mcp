@@ -195,7 +195,7 @@ export function AppSidebar() {
 
   if (collapsed) {
     return (
-      <aside className="w-14 shrink-0 border-r border-border bg-card flex flex-col h-screen sticky top-0">
+      <aside className="hidden md:flex w-14 shrink-0 border-r border-border bg-card flex-col h-screen sticky top-0">
         <div className="p-2 border-b border-border flex flex-col items-center gap-2">
           <Link
             href="/"
@@ -240,7 +240,7 @@ export function AppSidebar() {
   }
 
   return (
-    <aside className="w-60 shrink-0 border-r border-border bg-card flex flex-col h-screen sticky top-0 overflow-hidden">
+    <aside className="hidden md:flex w-60 shrink-0 border-r border-border bg-card flex-col h-screen sticky top-0 overflow-hidden">
       <div className="px-3 py-3 border-b border-border space-y-2 shrink-0">
         <div className="flex items-center justify-between gap-2">
           <Link href="/" className="flex items-center gap-2 px-1.5 min-w-0">
