@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { hashPassword } from "@/lib/auth/password";
+import { rateLimit } from "@/lib/auth/rate-limit";
 import { loginAs } from "@/lib/auth/session";
 import {
   exchangeCode,
@@ -35,6 +36,16 @@ export async function GET(
   const { provider: providerName } = await params;
   const provider = getProvider(providerName);
   if (!provider) return NextResponse.redirect(`${appBaseUrl(req)}/login?error=oauth_unconfigured`);
+  // Cap outbound exchange-code calls per IP to deter token-spraying / abuse
+  // of upstream provider rate limits.
+  const ipForLimit = getRequestIp(req.headers);
+  const cbLimit = rateLimit(`oauth-cb:${providerName}:${ipForLimit}`, {
+    limit: 20,
+    windowMs: 60_000,
+  });
+  if (!cbLimit.allowed) {
+    return NextResponse.redirect(`${appBaseUrl(req)}/login?error=oauth_rate_limited`);
+  }
 
   const url = new URL(req.url);
   const code = url.searchParams.get("code");

@@ -207,6 +207,17 @@ export async function listManuscripts(limit = 20): Promise<UploadRecord[]> {
 // directory outside the data dir.
 const MANUSCRIPT_ID_RE = /^[0-9a-fA-F-]{8,64}$/;
 
+/**
+ * Tear down an upload directory. Used when a dedup decision orphans a freshly
+ * staged file, so we don't leak disk space across repeated identical uploads.
+ */
+export async function deleteUpload(manuscriptId: string): Promise<void> {
+  if (!/^[0-9a-fA-F-]{8,64}$/.test(manuscriptId)) return;
+  const base = await ensureDataDir();
+  const target = assertWithinDir(path.join(base, manuscriptId), base);
+  await fs.rm(target, { recursive: true, force: true });
+}
+
 export async function deleteOldUploads(
   olderThanHours: number,
   options: { isInProgress?: (id: string) => boolean } = {},

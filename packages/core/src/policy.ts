@@ -178,10 +178,18 @@ function normalizePolicy(raw: Partial<ScreeningPolicy>, sourcePath: string): Scr
     },
   };
 
-  validateNumber(candidate.thresholds.likelyMatch, "thresholds.likelyMatch");
-  validateNumber(candidate.thresholds.possibleMatch, "thresholds.possibleMatch");
+  // Walk every numeric threshold (person + reference) so a malformed custom
+  // policy fails loud at load time instead of producing weird verdicts.
+  for (const [key, value] of Object.entries(candidate.thresholds) as [string, unknown][]) {
+    validateNumber(value as number, `thresholds.${key}`);
+  }
   for (const [key, value] of Object.entries(candidate.weights)) {
     validateNumber(value, `weights.${key}`);
+  }
+  for (const [key, value] of Object.entries(candidate.safety) as [string, unknown][]) {
+    if (typeof value !== "boolean") {
+      throw new Error(`Invalid policy value safety.${key}: expected a boolean.`);
+    }
   }
   return candidate;
 }

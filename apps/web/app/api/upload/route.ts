@@ -12,7 +12,7 @@ import { getProject } from "@/lib/db/projects";
 import { isWorkspaceMember } from "@/lib/db/workspaces";
 import { rateLimit } from "@/lib/auth/rate-limit";
 import { getRequestIp } from "@/lib/auth/validate";
-import { saveUpload } from "@/lib/store";
+import { deleteUpload, saveUpload } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -79,6 +79,9 @@ export async function POST(req: Request) {
     sha256: record.sha256,
   });
   if (created.deduped && created.existing) {
+    // The freshly-staged file is now an orphan (the existing manuscript wins).
+    // Tear it down so we don't leak disk space across repeated dedup hits.
+    await deleteUpload(manuscriptId).catch(() => {});
     writeAudit({
       userId: user.id,
       action: "upload",

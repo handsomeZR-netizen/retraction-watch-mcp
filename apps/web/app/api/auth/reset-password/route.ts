@@ -3,6 +3,7 @@ import { z } from "zod";
 import { writeAudit } from "@/lib/db/audit";
 import { consumeEmailToken } from "@/lib/db/email-tokens";
 import { hashPassword, isStrongEnough } from "@/lib/auth/password";
+import { rateLimit } from "@/lib/auth/rate-limit";
 import { setUserPassword } from "@/lib/db/users";
 import { getRequestIp } from "@/lib/auth/validate";
 
@@ -15,6 +16,11 @@ const Schema = z.object({
 });
 
 export async function POST(req: Request) {
+  const ip = getRequestIp(req.headers);
+  const limit = rateLimit(`reset:${ip}`, { limit: 10, windowMs: 60_000 });
+  if (!limit.allowed) {
+    return NextResponse.json({ error: "请求过于频繁，请稍后再试" }, { status: 429 });
+  }
   let body: unknown;
   try {
     body = await req.json();
@@ -33,7 +39,7 @@ export async function POST(req: Request) {
     userId: row.user_id,
     action: "change_settings",
     detail: { kind: "password.reset" },
-    ip: getRequestIp(req.headers),
+    ip,
     userAgent: req.headers.get("user-agent"),
   });
   return NextResponse.json({ ok: true });

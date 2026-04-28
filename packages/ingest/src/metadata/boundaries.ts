@@ -7,6 +7,13 @@
 
 const KEYWORDS_BOUNDARY_RE = /^keywords?\s*[:：]?\s*$/i;
 const ABSTRACT_BOUNDARY_RE = /^(abstract|摘要|关键词|introduction|引言)\s*[:：]?\s*$/i;
+// Common journal-prelude lines that appear between authors and the abstract:
+// "Received: …", "Accepted: …", "Published: …", "Correspondence to …", etc.
+// Treat them as boundary so the journal's own metadata can't be parsed as
+// authors. (Note: an isolated email line is NOT a boundary — many Elsevier
+// papers put author@university.edu in the author block before affiliations.)
+const CORRESPONDENCE_RE =
+  /^(corresponden(ce|t)\s|address\s+correspondence|received\s*[:：]|accepted\s*[:：]|published\s*[:：]|available online|first published|manuscript received)/i;
 // Elsevier renders ABSTRACT and ARTICLE INFO with letter-spacing
 // → "A B S T R A C T" and "A R T I C L E I N F O"
 const SPACED_ABSTRACT_RE = /^a\s*b\s*s\s*t\s*r\s*a\s*c\s*t\s*$/i;
@@ -28,5 +35,6 @@ export function isBoundaryLine(line: string): boolean {
   if (COPYRIGHT_RE.test(line)) return true;
   if (ARTICLE_HISTORY_RE.test(line)) return true;
   if (NUMBERED_SECTION_RE.test(line)) return true;
+  if (CORRESPONDENCE_RE.test(line)) return true;
   return false;
 }
