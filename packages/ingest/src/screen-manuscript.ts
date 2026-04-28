@@ -227,7 +227,7 @@ function mergeHeader(
   };
 }
 
-function countTotals(
+export function countTotals(
   items: { result: ScreenReferenceResult }[],
   authors: AuthorScreenResult[],
 ) {
@@ -274,7 +274,7 @@ function countTotals(
   return totals;
 }
 
-function decideVerdict(totals: ReturnType<typeof countTotals>, warnings: string[] = []): ManuscriptVerdict {
+export function decideVerdict(totals: ReturnType<typeof countTotals>, warnings: string[] = []): ManuscriptVerdict {
   if (totals.confirmed > 0 || totals.authorsConfirmed > 0) return "FAIL";
   if (
     totals.likely > 0 ||
