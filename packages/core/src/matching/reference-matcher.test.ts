@@ -47,6 +47,16 @@ describe("screenReference", () => {
     expect(result.bestCandidate?.matchedFields).toContain("doi");
   });
 
+  it("returns no_match for an unrelated DOI", async () => {
+    const result = await screenReference(repoStub, {
+      raw: "Unrelated reference. https://doi.org/10.9999/unrelated",
+      doi: "10.9999/unrelated",
+    });
+
+    expect(result.verdict).toBe("no_match");
+    expect(result.bestCandidate).toBeNull();
+  });
+
   it("returns likely_match for high title similarity + author overlap", async () => {
     const result = await screenReference(repoStub, {
       raw: "",
