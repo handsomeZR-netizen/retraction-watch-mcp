@@ -93,6 +93,9 @@ async function drainQueue(): Promise<void> {
   drainPromise = (async () => {
     try {
       for (;;) {
+        // Once shutdown has begun, do not pick up new queued jobs — finish the
+        // active one and let gracefulDrain flush whatever is still queued.
+        if (shuttingDown) return;
         const job = queue.shift();
         if (!job) return;
         activeJob = job;
@@ -191,9 +194,13 @@ async function runParseJob(job: ParseJob): Promise<void> {
       },
     );
 
-    await saveResult(job.manuscriptId, result);
     const resultPath = path.dirname(upload.filePath);
-    markManuscriptDone({
+    // Compare-and-set on parseJobId: if the lease was already broken (e.g. a
+    // graceful-drain timeout marked this job errored mid-flight) markManuscriptDone
+    // returns false and we skip writing the result file + screening log entry,
+    // so the DB and filesystem stay consistent.
+    await saveResult(job.manuscriptId, result);
+    const claimed = markManuscriptDone({
       id: job.manuscriptId,
       parseJobId: job.parseJobId,
       verdict: result.verdict,
@@ -203,6 +210,13 @@ async function runParseJob(job: ParseJob): Promise<void> {
       resultPath,
       generatedAt: result.generatedAt,
     });
+    if (!claimed) {
+      console.warn(
+        `[parse-runner] lease lost for ${job.manuscriptId}; skipping screening-log write`,
+      );
+      if (state) state.status = "error";
+      return;
+    }
 
     try {
       writeScreeningLog({
@@ -226,6 +240,9 @@ async function runParseJob(job: ParseJob): Promise<void> {
     scheduleStateCleanup(job.manuscriptId);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    // markManuscriptError is itself parseJobId-scoped (UPDATE WHERE
+    // parse_job_id = ?), so a no-op return here is safe even if the job's
+    // lease was already revoked by graceful drain.
     markManuscriptError(job.manuscriptId, job.parseJobId, msg);
     if (state) state.status = "error";
     emit(job.manuscriptId, { stage: "error", message: msg });

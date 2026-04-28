@@ -51,9 +51,16 @@ function createNextConfig(phase) {
     { key: "Content-Security-Policy", value: csp },
   ];
   if (isProd) {
+    // HSTS: max-age only by default. `includeSubDomains` and `preload` are
+    // deployment commitments (preload requires actual enrollment in the
+    // browser preload list, includeSubDomains breaks any non-HTTPS subdomain).
+    // Opt in explicitly via env when the operator is ready for either.
+    const hstsParts = ["max-age=63072000"];
+    if (process.env.RW_HSTS_INCLUDE_SUBDOMAINS === "1") hstsParts.push("includeSubDomains");
+    if (process.env.RW_HSTS_PRELOAD === "1") hstsParts.push("preload");
     securityHeaders.push({
       key: "Strict-Transport-Security",
-      value: "max-age=63072000; includeSubDomains; preload",
+      value: hstsParts.join("; "),
     });
   }
 

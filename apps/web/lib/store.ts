@@ -32,6 +32,9 @@ function manuscriptDir(id: string): string {
  * Reject a path that resolves outside `baseDir`. Defends against
  * path-traversal attacks where a stored filename or upload.json refers to
  * `..` segments or absolute paths pointing outside the manuscript dir.
+ *
+ * Lexical check only — does NOT follow symlinks. Use `assertNoSymlinkLeak`
+ * before reading/writing the actual file when symlink attacks are in scope.
  */
 export function assertWithinDir(targetPath: string, baseDir: string): string {
   const resolvedBase = path.resolve(baseDir) + path.sep;
@@ -45,6 +48,35 @@ export function assertWithinDir(targetPath: string, baseDir: string): string {
     throw new Error(`path traversal: ${targetPath} not within ${baseDir}`);
   }
   return resolvedTarget;
+}
+
+/**
+ * Verify the *real* (post-symlink-resolution) parent dir of `targetPath` is
+ * inside `baseDir` AND that the leaf is not itself a symlink. Use after the
+ * lexical assertWithinDir check to defend against attacks where the manuscript
+ * dir contains a symlink leaf pointing outside.
+ */
+export async function assertNoSymlinkLeak(
+  targetPath: string,
+  baseDir: string,
+): Promise<void> {
+  const realBase = await fs.realpath(baseDir);
+  const parent = path.dirname(targetPath);
+  const realParent = await fs.realpath(parent).catch(() => parent);
+  const realBaseSep = realBase + path.sep;
+  if (realParent !== realBase && !realParent.startsWith(realBaseSep)) {
+    throw new Error(`symlink escape: ${targetPath} parent resolves to ${realParent}`);
+  }
+  // If the leaf already exists, ensure it's not a symlink.
+  try {
+    const stat = await fs.lstat(targetPath);
+    if (stat.isSymbolicLink()) {
+      throw new Error(`symlink leaf rejected: ${targetPath}`);
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    // Leaf doesn't exist yet — fine, we're about to create it.
+  }
 }
 
 /**
@@ -74,6 +106,7 @@ export async function saveUpload(input: {
   await fs.mkdir(dir, { recursive: true });
   const safeName = sanitizeUploadFileName(input.fileName);
   const filePath = assertWithinDir(path.join(dir, safeName), dir);
+  await assertNoSymlinkLeak(filePath, dir);
 
   const hash = createHash("sha256");
   let bytes = 0;

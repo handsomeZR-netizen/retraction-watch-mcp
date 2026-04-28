@@ -12,6 +12,7 @@
 // Recommend cron / systemd timer once a day. Also safe to run at any time;
 // no app downtime is required.
 
+import { randomBytes } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -26,10 +27,14 @@ function pad(n) {
 
 function timestamp() {
   const d = new Date();
-  return (
+  // Include seconds + 6-char hex suffix so concurrent / quick-fire backups
+  // never collide on filename. Suffix also makes glob-rotation matching
+  // unambiguous (see RX below).
+  const stamp =
     `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` +
-    `-${pad(d.getHours())}${pad(d.getMinutes())}`
-  );
+    `-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  const suffix = randomBytes(3).toString("hex");
+  return `${stamp}-${suffix}`;
 }
 
 function getAppDbDir() {
@@ -62,18 +67,19 @@ async function main() {
     db.close();
   }
 
-  // 2. Gzip the temp file to .gz, then unlink the temp.
+  // 2. Gzip the temp file to .gz with exclusive create (`wx`) so we never
+  // overwrite an existing snapshot. Then unlink the temp.
   await pipeline(
     createReadStream(tmpPath),
     createGzip({ level: 9 }),
-    createWriteStream(finalPath),
+    createWriteStream(finalPath, { flags: "wx" }),
   );
   await fs.unlink(tmpPath);
 
   // 3. Rotate: keep newest KEEP files, delete the rest.
   const entries = await fs.readdir(backupDir);
   const matches = entries
-    .filter((e) => /^app-\d{8}-\d{4}\.sqlite\.gz$/.test(e))
+    .filter((e) => /^app-\d{8}-\d{6}-[0-9a-f]{6}\.sqlite\.gz$/.test(e))
     .sort()
     .reverse();
   for (const old of matches.slice(KEEP)) {

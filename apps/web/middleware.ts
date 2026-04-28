@@ -24,40 +24,49 @@ const PUBLIC_API_PREFIXES = [
 // CSRF defense: state-changing API requests must declare a same-origin
 // Origin/Referer. Browsers attach Origin to every fetch automatically; this
 // closes the iron-session sameSite=lax loophole for cross-site POST.
+//
+// In production, the canonical origin MUST come from RW_BASE_URL. Trusting the
+// raw Host header behind a permissive proxy is dangerous — an attacker who
+// controls the Host can match it against their own Origin. In dev we fall back
+// to ownHost + localhost since there's typically no proxy.
 function checkCsrf(req: NextRequest): NextResponse | null {
   const method = req.method.toUpperCase();
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return null;
   if (!req.nextUrl.pathname.startsWith("/api/")) return null;
 
+  const isProd = process.env.NODE_ENV === "production";
   const origin = parseUrl(req.headers.get("origin"));
   const referer = parseUrl(req.headers.get("referer"));
   const source = origin ?? referer;
 
   if (!source) {
-    if (process.env.NODE_ENV === "production") {
-      return NextResponse.json(
-        { error: "forbidden: missing origin/referer" },
-        { status: 403 },
-      );
+    if (isProd) {
+      return forbid("missing origin/referer");
     }
     return null; // dev tools / curl in dev
   }
 
-  const ownHost = req.headers.get("host");
-  if (ownHost && source.host === ownHost) return null;
-  const baseUrl = parseUrl(process.env.RW_BASE_URL ?? null);
-  if (baseUrl && source.host === baseUrl.host) return null;
-  if (
-    process.env.NODE_ENV !== "production" &&
-    (source.hostname === "localhost" || source.hostname === "127.0.0.1")
-  ) {
-    return null;
+  // Production trust path: RW_BASE_URL is the only canonical origin.
+  if (isProd) {
+    const baseUrl = parseUrl(process.env.RW_BASE_URL ?? null);
+    if (!baseUrl) {
+      return forbid("RW_BASE_URL not configured");
+    }
+    if (source.host === baseUrl.host) return null;
+    return forbid("origin not allowed");
   }
 
-  return NextResponse.json(
-    { error: "forbidden: origin not allowed" },
-    { status: 403 },
-  );
+  // Dev trust path: same-host or localhost.
+  const ownHost = req.headers.get("host");
+  if (ownHost && source.host === ownHost) return null;
+  if (source.hostname === "localhost" || source.hostname === "127.0.0.1") return null;
+  const baseUrl = parseUrl(process.env.RW_BASE_URL ?? null);
+  if (baseUrl && source.host === baseUrl.host) return null;
+  return forbid("origin not allowed");
+}
+
+function forbid(reason: string): NextResponse {
+  return NextResponse.json({ error: `forbidden: ${reason}` }, { status: 403 });
 }
 
 function parseUrl(value: string | null): URL | null {

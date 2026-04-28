@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import fs from "node:fs";
 import { getAppDb } from "./app-db";
 
 export type AuditAction =
@@ -64,11 +65,53 @@ export function writeAudit(input: {
  * Hash a client IP for audit logs. Salted with RW_DATA_KEY (or session secret
  * fallback) so the hash is irreversible across deployments while still letting
  * us correlate same-IP events within one deployment.
+ *
+ * Resolves the salt from env vars in this order:
+ *   1. RW_DATA_KEY (raw)
+ *   2. RW_DATA_KEY_FILE (path; for docker secrets)
+ *   3. RW_SESSION_SECRET (raw)
+ *   4. RW_SESSION_SECRET_FILE (path)
+ *   5. "rw-screen-dev" — only allowed when NODE_ENV !== "production".
  */
 function hashIp(ip: string): string {
-  const salt =
-    process.env.RW_DATA_KEY ?? process.env.RW_SESSION_SECRET ?? "rw-screen-dev";
+  const salt = resolveAuditSalt();
   return createHash("sha256").update(`${salt}:${ip}`).digest("hex").slice(0, 16);
+}
+
+let cachedSalt: string | null = null;
+
+function resolveAuditSalt(): string {
+  if (cachedSalt) return cachedSalt;
+  const candidates = [
+    process.env.RW_DATA_KEY?.trim(),
+    readFileEnv("RW_DATA_KEY_FILE"),
+    process.env.RW_SESSION_SECRET?.trim(),
+    readFileEnv("RW_SESSION_SECRET_FILE"),
+  ];
+  for (const value of candidates) {
+    if (value) {
+      cachedSalt = value;
+      return value;
+    }
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "audit IP hashing requires RW_DATA_KEY or RW_SESSION_SECRET (or *_FILE) in production",
+    );
+  }
+  cachedSalt = "rw-screen-dev";
+  return cachedSalt;
+}
+
+function readFileEnv(name: string): string | null {
+  const file = process.env[name]?.trim();
+  if (!file) return null;
+  try {
+    const value = fs.readFileSync(file, "utf8").trim();
+    return value || null;
+  } catch {
+    return null;
+  }
 }
 
 export function pruneAuditLog(olderThanDays: number): number {
