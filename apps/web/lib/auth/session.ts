@@ -10,6 +10,7 @@ export interface SessionData {
 }
 
 const DEV_SECRET = "dev-only-rw-screen-session-secret-change-me-in-production-32bytes";
+export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 /**
  * Resolve the session secret from one of:
@@ -45,12 +46,13 @@ const SECRET = resolveSessionSecret();
 const sessionOptions: SessionOptions = {
   cookieName: "rw_screen_session",
   password: SECRET,
+  ttl: SESSION_TTL_SECONDS,
   cookieOptions: {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: 60 * 60 * 24 * 30,
+    maxAge: SESSION_TTL_SECONDS - 60,
   },
 };
 
