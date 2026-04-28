@@ -46,7 +46,7 @@ export async function PATCH(
   try { body = await req.json(); } catch {
     return NextResponse.json({ error: "请求体必须是 JSON" }, { status: 400 });
   }
-  const parsed = z.object({ name: z.string().min(1).max(64) }).safeParse(body);
+  const parsed = z.object({ name: z.string().trim().min(1).max(64) }).safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "字段不合法" }, { status: 400 });
   renameWorkspace(id, parsed.data.name);
   writeAudit({

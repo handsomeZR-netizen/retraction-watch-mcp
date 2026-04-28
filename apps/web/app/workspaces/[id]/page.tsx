@@ -59,25 +59,38 @@ export default function WorkspaceDetailPage() {
   const [name, setName] = useState("");
   const [origin, setOrigin] = useState("");
 
-  async function load() {
-    const res = await fetch(`/api/workspaces/${id}`);
-    if (!res.ok) {
+  async function load(signal?: AbortSignal) {
+    setData(null);
+    setInvites([]);
+    try {
+      const res = await fetch(`/api/workspaces/${id}`, { signal });
+      if (signal?.aborted) return;
+      if (!res.ok) {
+        toast.error("加载失败");
+        router.push("/workspaces");
+        return;
+      }
+      const j = (await res.json()) as { workspace: WSDetail; members: Member[] };
+      if (signal?.aborted) return;
+      setData(j);
+      setName(j.workspace.name);
+      if (j.workspace.role === "owner" || j.workspace.role === "admin") {
+        const inv = await fetch(`/api/workspaces/${id}/invites`, { signal });
+        if (signal?.aborted) return;
+        if (inv.ok) setInvites(((await inv.json()) as { invites: Invite[] }).invites);
+      }
+    } catch (err) {
+      if (signal?.aborted) return;
       toast.error("加载失败");
       router.push("/workspaces");
-      return;
-    }
-    const j = (await res.json()) as { workspace: WSDetail; members: Member[] };
-    setData(j);
-    setName(j.workspace.name);
-    if (j.workspace.role === "owner" || j.workspace.role === "admin") {
-      const inv = await fetch(`/api/workspaces/${id}/invites`);
-      if (inv.ok) setInvites(((await inv.json()) as { invites: Invite[] }).invites);
     }
   }
 
   useEffect(() => {
+    const controller = new AbortController();
     setOrigin(window.location.origin);
-    void load();
+    void load(controller.signal);
+    return () => controller.abort();
   }, [id]);
 
   if (!data) return <Skeleton className="h-64 w-full" />;
