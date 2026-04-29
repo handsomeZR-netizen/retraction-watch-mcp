@@ -68,4 +68,5 @@ export type {
   SourceTag,
   FieldProvenance,
   ProvenanceMap,
+  ParseTraceEntry,
 } from "./data/types.js";

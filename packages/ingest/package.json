@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@rw/core": "0.4.10",
+    "better-sqlite3": "11.7.0",
     "mammoth": "1.8.0",
     "openai": "4.78.1",
     "tesseract.js": "5.1.1",
@@ -36,6 +37,7 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "7.6.12",
     "@types/node": "25.0.0",
     "@types/yauzl": "2.10.3",
     "typescript": "5.9.3",

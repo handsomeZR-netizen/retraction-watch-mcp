@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import {
   BALANCED_POLICY,
   screenAuthor,
@@ -7,6 +8,7 @@ import {
   type FileType,
   type ManuscriptScreenResult,
   type ManuscriptVerdict,
+  type ParseTraceEntry,
   type ScreenReferenceInput,
   type ScreenReferenceResult,
   type ScreeningPolicy,
@@ -22,8 +24,14 @@ import {
   locateAndSplitReferences,
   regexStructure,
 } from "./refs.js";
-import { DeepseekLlmClient, type LlmConfig } from "./llm-client.js";
+import { DeepseekLlmClient, LlmExtractionClient, type LlmConfig } from "./llm-client.js";
 import { ocrFallback } from "./ocr.js";
+import { extractCandidates } from "./pipeline/extract-candidates.js";
+import { enrichMetadata, type EnrichmentClients } from "./pipeline/enrich-metadata.js";
+import { CrossrefClient } from "./external/crossref.js";
+import { EuropePmcClient } from "./external/europepmc.js";
+import { HttpClient } from "./external/http-client.js";
+import { ExternalCache } from "./external/cache.js";
 import type {
   ExtractedDocument,
   IngestProgressSink,
@@ -44,6 +52,16 @@ export interface ScreenManuscriptOptions {
   llmHeader?: boolean;
   cloudOcr?: boolean;
   progress?: IngestProgressSink;
+  /**
+   * Opt into the four-stage enriched pipeline. Defaults to env
+   * `RW_USE_ENRICHED_PIPELINE === "1"`. When true, references go through
+   * `extractCandidates` → `enrichMetadata` (Crossref/EPMC + LLM fusion)
+   * before screening. Crossref enrichment is skipped if no contact mailto
+   * is supplied via `enrichmentContact` or `RW_CONTACT_EMAIL`.
+   */
+  enrichedPipeline?: boolean;
+  enrichmentContact?: string;
+  enrichmentCachePath?: string;
 }
 
 export async function screenManuscript(
@@ -78,7 +96,9 @@ export async function screenManuscript(
     detail: { ocrUsed: extracted.ocrUsed, warnings: extracted.warnings },
   });
 
-  const llmClient = options.llm ? new DeepseekLlmClient(options.llm) : null;
+  const llmClient = options.llm ? new LlmExtractionClient(options.llm) : null;
+  const enrichedPipeline =
+    options.enrichedPipeline ?? process.env.RW_USE_ENRICHED_PIPELINE === "1";
 
   let metadata = extractHeaderMetadata({
     fullText: extracted.fullText,
@@ -128,34 +148,72 @@ export async function screenManuscript(
     detail: { count: bibReferences.length + rawRefs.length },
   });
 
-  const { structured: regexStructured, unresolved } = regexStructure(rawRefs);
+  let allStructured: StructuredReference[];
+  let parseTrace: ParseTraceEntry[] | undefined;
+  const enrichmentTelemetry = {
+    crossrefCalls: 0,
+    epmcCalls: 0,
+    llmCalls: 0,
+    enrichmentFailures: 0,
+    cacheHits: 0,
+  };
+  let externalCache: ExternalCache | null = null;
 
-  let llmStructured: StructuredReference[] = [];
-  if (llmClient && unresolved.length > 0) {
-    llmStructured = await llmClient.structureReferences(unresolved);
+  if (enrichedPipeline) {
+    const candidates = extractCandidates(rawRefs);
+    const { unresolved } = regexStructure(rawRefs);
+    const clients = buildEnrichmentClients(options, llmClient);
+    externalCache = clients.cache;
+    const enrichResult = await enrichMetadata(candidates, unresolved, {
+      crossref: clients.crossref,
+      europepmc: clients.europepmc,
+      llm: clients.llm,
+    });
+    allStructured = dedupeStructuredRefs([...bibReferences, ...enrichResult.references]);
+    parseTrace = enrichResult.trace;
+    enrichmentTelemetry.crossrefCalls = enrichResult.telemetry.crossrefCalls;
+    enrichmentTelemetry.epmcCalls = enrichResult.telemetry.epmcCalls;
+    enrichmentTelemetry.llmCalls = enrichResult.telemetry.llmCalls;
+    enrichmentTelemetry.enrichmentFailures = enrichResult.telemetry.enrichmentFailures;
+    enrichmentTelemetry.cacheHits = clients.cache?.stats.hits ?? 0;
+    progress({
+      stage: "refs_structured",
+      message: `结构化参考文献：${allStructured.length} 条 (enriched)`,
+      detail: {
+        llmCalls: enrichResult.telemetry.llmCalls,
+        crossrefCalls: enrichResult.telemetry.crossrefCalls,
+        epmcCalls: enrichResult.telemetry.epmcCalls,
+        cacheHits: enrichmentTelemetry.cacheHits,
+        bibHits: bibReferences.length,
+      },
+    });
+  } else {
+    const { structured: regexStructured, unresolved } = regexStructure(rawRefs);
+    let llmStructured: StructuredReference[] = [];
+    if (llmClient && unresolved.length > 0) {
+      llmStructured = await llmClient.structureReferences(unresolved);
+    }
+    const heuristicStructured = llmClient
+      ? []
+      : heuristicStructureReferences(unresolved);
+    allStructured = dedupeStructuredRefs([
+      ...bibReferences,
+      ...regexStructured,
+      ...llmStructured,
+      ...heuristicStructured,
+    ]);
+    progress({
+      stage: "refs_structured",
+      message: `结构化参考文献：${allStructured.length} 条`,
+      detail: {
+        llmCalls: llmClient?.stats.refsCalls ?? 0,
+        regexHits: regexStructured.length,
+        heuristicHits: heuristicStructured.length,
+        llmHits: llmStructured.length,
+        bibHits: bibReferences.length,
+      },
+    });
   }
-  const heuristicStructured = llmClient
-    ? []
-    : heuristicStructureReferences(unresolved);
-
-  const allStructured: StructuredReference[] = dedupeStructuredRefs([
-    ...bibReferences,
-    ...regexStructured,
-    ...llmStructured,
-    ...heuristicStructured,
-  ]);
-
-  progress({
-    stage: "refs_structured",
-    message: `结构化参考文献：${allStructured.length} 条`,
-    detail: {
-      llmCalls: llmClient?.stats.refsCalls ?? 0,
-      regexHits: regexStructured.length,
-      heuristicHits: heuristicStructured.length,
-      llmHits: llmStructured.length,
-      bibHits: bibReferences.length,
-    },
-  });
 
   const screened: { reference: StructuredReference; result: ScreenReferenceResult }[] = [];
   for (let i = 0; i < allStructured.length; i += 1) {
@@ -198,6 +256,7 @@ export async function screenManuscript(
         pmid: s.reference.pmid,
         journal: s.reference.journal,
         source: s.reference.source,
+        provenance: s.reference.provenance,
       },
       result: s.result,
     })),
@@ -207,14 +266,24 @@ export async function screenManuscript(
     warnings: extracted.warnings,
     network: {
       deepseekCalls: (llmClient?.stats.refsCalls ?? 0) + (llmClient?.stats.headerCalls ?? 0),
-      crossrefCalls: 0,
+      crossrefCalls: enrichmentTelemetry.crossrefCalls,
       cloudOcrCalls: 0,
+      epmcCalls: enrichmentTelemetry.epmcCalls,
+      llmCalls: enrichmentTelemetry.llmCalls,
+      cacheHits: enrichmentTelemetry.cacheHits,
+      enrichmentFailures: enrichmentTelemetry.enrichmentFailures,
     },
     consequentialUseWarning: CONSEQUENTIAL_USE_WARNING,
     generatedAt: new Date().toISOString(),
     sourceVersion: repository.getSourceSnapshot(),
     policyVersion: policy.policyVersion,
+    parseTrace,
+    pipelineVariant: enrichedPipeline ? "enriched" : "legacy",
   };
+
+  if (externalCache) {
+    externalCache.close();
+  }
 
   progress({
     stage: "done",
@@ -223,6 +292,41 @@ export async function screenManuscript(
   });
 
   return result;
+}
+
+interface BuiltEnrichmentClients {
+  crossref?: CrossrefClient;
+  europepmc?: EuropePmcClient;
+  llm?: LlmExtractionClient;
+  cache: ExternalCache | null;
+}
+
+function buildEnrichmentClients(
+  options: ScreenManuscriptOptions,
+  llmClient: LlmExtractionClient | null,
+): BuiltEnrichmentClients {
+  const contact = options.enrichmentContact ?? process.env.RW_CONTACT_EMAIL;
+  if (!contact) {
+    // Without a contact mailto we won't hit Crossref / EPMC (the polite-pool
+    // User-Agent constructor would reject), but LLM-only enrichment can
+    // still help refs whose regex extraction failed.
+    return { llm: llmClient ?? undefined, cache: null };
+  }
+  const cachePath =
+    options.enrichmentCachePath ?? join(process.cwd(), ".local-app-db", "external-cache.sqlite");
+  const cache = new ExternalCache(cachePath);
+  const http = new HttpClient({
+    userAgent: `rw-screen/0.4.10 (mailto:${contact})`,
+    timeoutMs: 15_000,
+    maxRetries: 3,
+    perHostConcurrency: 3,
+  });
+  return {
+    crossref: new CrossrefClient(http, cache),
+    europepmc: new EuropePmcClient(http, cache),
+    llm: llmClient ?? undefined,
+    cache,
+  };
 }
 
 function mergeHeader(

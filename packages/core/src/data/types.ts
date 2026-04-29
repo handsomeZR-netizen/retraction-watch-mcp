@@ -30,6 +30,17 @@ export interface ProvenanceMap {
   journal?: FieldProvenance<string | null>;
 }
 
+export interface ParseTraceEntry {
+  refIndex: number;
+  field: string;
+  source: SourceTag;
+  confidence: number;
+  accepted: boolean;
+  reason: string;
+  before?: unknown;
+  after?: unknown;
+}
+
 export interface RawRwRecord {
   "Record ID": string;
   Title: string;
@@ -265,4 +276,6 @@ export interface ManuscriptScreenResult {
   generatedAt: string;
   sourceVersion: SourceSnapshot | null;
   policyVersion: string;
+  parseTrace?: ParseTraceEntry[];
+  pipelineVariant?: "legacy" | "enriched";
 }
