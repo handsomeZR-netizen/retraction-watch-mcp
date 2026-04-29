@@ -7,6 +7,11 @@
 
 const KEYWORDS_BOUNDARY_RE = /^keywords?\s*[:：]?\s*$/i;
 const ABSTRACT_BOUNDARY_RE = /^(abstract|摘要|关键词|introduction|引言)\s*[:：]?\s*$/i;
+// Some PDFs glue "Abstract" with the first sentence on the same line
+// ("Abstract  Vehicular ad hoc networks (VANETs) rely on…"). Allow a
+// prefix-only match when the line clearly starts with one of the boundary
+// keywords followed by whitespace + content.
+const ABSTRACT_PREFIX_RE = /^(abstract|introduction|摘要|引言)\b\s+\S/i;
 // Common journal-prelude lines that appear between authors and the abstract:
 // "Received: …", "Accepted: …", "Published: …", "Correspondence to …", etc.
 // Treat them as boundary so the journal's own metadata can't be parsed as
@@ -28,6 +33,7 @@ const INLINE_KEYWORDS_RE = /^keywords?\s*[:：]/i;
 export function isBoundaryLine(line: string): boolean {
   if (!line) return false;
   if (ABSTRACT_BOUNDARY_RE.test(line)) return true;
+  if (ABSTRACT_PREFIX_RE.test(line)) return true;
   if (KEYWORDS_BOUNDARY_RE.test(line)) return true;
   if (INLINE_KEYWORDS_RE.test(line)) return true;
   if (SPACED_ABSTRACT_RE.test(line)) return true;

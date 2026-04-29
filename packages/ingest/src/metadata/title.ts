@@ -31,6 +31,54 @@ const TITLE_JOURNAL_BANNER_RE =
 const TITLE_VOLUME_ISSUE_RE =
   /^\s*(?:\d{4}[,.]?\s*)?(?:Vol(?:\.|ume)?\s*\d|No\.?\s*\d|Issue\s*\d|pp?\.\s*\d|\d+\s*\(\s*\d+\s*\)\s*[\d,\s–\-]+)/i;
 
+export interface TitleRange {
+  title: string;
+  startLine: number;
+  endLine: number; // inclusive index of the last line consumed by the title
+}
+
+/**
+ * Same logic as extractTitle, but also returns the line range consumed so
+ * that downstream consumers (author extraction) can skip those lines instead
+ * of running their own duplicate title detection that may disagree.
+ */
+export function extractTitleRange(lines: string[]): TitleRange | null {
+  const horizon = Math.min(lines.length, 25);
+  for (let i = 0; i < horizon; i += 1) {
+    let candidate = lines[i];
+    if (!candidateLooksLikeTitle(candidate)) continue;
+
+    if (i > 0) {
+      const prev = (lines[i - 1] ?? "").trim();
+      const joined = `${prev} ${candidate}`.replace(/\s+/g, " ").trim();
+      if (TITLE_JOURNAL_BANNER_RE.test(joined)) continue;
+    }
+    const lookahead = (lines[i + 1] ?? "").trim();
+    if (lookahead) {
+      const joined = `${candidate} ${lookahead}`.replace(/\s+/g, " ").trim();
+      if (TITLE_JOURNAL_BANNER_RE.test(joined)) continue;
+    }
+
+    let endLine = i;
+    for (let wrap = 0; wrap < 2; wrap += 1) {
+      const next = lines[i + 1 + wrap];
+      if (!next || !shouldMergeTitleContinuation(candidate, next)) break;
+      candidate = candidate.endsWith("-")
+        ? candidate.slice(0, -1) + next
+        : `${candidate} ${next}`;
+      endLine = i + 1 + wrap;
+    }
+
+    if (TITLE_BANNER_PHRASE_RE.test(candidate)) continue;
+    if (TITLE_JOURNAL_BANNER_RE.test(candidate)) continue;
+
+    if (candidate.length >= 6 && candidate.length <= 250) {
+      return { title: candidate, startLine: i, endLine };
+    }
+  }
+  return null;
+}
+
 export function extractTitle(lines: string[]): string | null {
   const horizon = Math.min(lines.length, 25);
   for (let i = 0; i < horizon; i += 1) {
@@ -157,13 +205,16 @@ export function shouldMergeTitleContinuation(curr: string, next: string): boolea
     (/^[A-Z\p{Lu}]/u.test(next) || startsWithConnector || isShortContinuation) &&
     nextTokens.length <= maxNextTokens;
   const currTokens = curr.split(/\s+/).filter(Boolean).length;
-  // 4 tokens (was 6) so titles like "DV-World: Benchmarking Data Visualization"
-  // still pick up the wrap. The previous mostlyCapitalized() guard was too
-  // strict — academic titles like "Tradeoffs and synergy between material
-  // cycles..." are mostly lowercase content words, so we only require the
-  // first character to be capitalized. Author-byline filtering above already
-  // covers the false-positive merge risk.
-  const currLooksLikeTitle = currTokens >= 4 && /^[A-Z\p{Lu}]/u.test(curr);
+  // Either ≥4 tokens or ≥18 characters with a capitalized first letter.
+  // The character-length floor catches arXiv 3-token titles like "LSTF-AD:
+  // Lightweight Sender-Level" (32 chars) that the previous 4-token gate
+  // rejected, blocking the merge to "Temporal Feature Anomaly Detection
+  // for VANET Message Streams". Author-byline filtering above (looksLike-
+  // AuthorListLine) still guards against false-positive merges of short
+  // capitalized lines that are actually bylines.
+  const currLooksLikeTitle =
+    (currTokens >= 4 || curr.length >= 18) &&
+    /^[A-Z\p{Lu}]/u.test(curr);
   return nextLooksTitle && currLooksLikeTitle && next.length <= 120;
 }
 

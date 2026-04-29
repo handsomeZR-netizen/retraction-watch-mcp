@@ -28,6 +28,35 @@ describe("sliceAuthorBlock", () => {
     expect(block.some((l) => /Anomaly Detection/.test(l))).toBe(false);
   });
 
+  it("excludes a 3-line title's continuation lines from the author block", () => {
+    // Repro for the LSTF-AD bug: the third title line ("VANET Message
+    // Streams") used to leak into the author block because sliceAuthorBlock
+    // ran its own 2-merge limit instead of reusing extractTitle's range.
+    const lines = [
+      "LSTF-AD: Lightweight Sender-Level",
+      "Temporal Feature Anomaly Detection for",
+      "VANET Message Streams",
+      "Anonymous Authors",
+      "Abstract",
+      "Vehicular ad hoc networks (VANETs) rely on periodic cooperative messages…",
+    ];
+    const block = sliceAuthorBlock(lines);
+    expect(block).toEqual(["Anonymous Authors"]);
+  });
+
+  it("does not list abstract sentence fragments as authors (Forest. On the …)", () => {
+    // After the 16-line scan cap and the sentence-fragment guard in
+    // isPlausibleName, abstract-body wraps like "Forest. On the position-
+    // offset split…" must not appear in parseRawNames output.
+    const block = [
+      "Anonymous Authors",
+      "Forest. On the position-offset split, the temporal-focused",
+      "configuration achieves F1 = 0.8620 versus 0.8499 for Random Forest",
+    ];
+    const names = parseRawNames(block);
+    expect(names).toEqual(["Anonymous Authors"]);
+  });
+
   it("stops at an inline 'Keywords:' line", () => {
     const lines = [
       "Useful Paper Title Here",

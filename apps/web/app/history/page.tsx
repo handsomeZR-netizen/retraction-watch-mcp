@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ConfirmDeleteDialog } from "@/components/ConfirmDeleteDialog";
 import { cn } from "@/lib/utils";
 
 interface Item {
@@ -41,6 +42,10 @@ const VERDICT_ICON: Record<NonNullable<Item["verdict"]>, { icon: Icon; color: st
 
 export default function HistoryPage() {
   const [items, setItems] = useState<Item[] | null>(null);
+  // Dialog-driven delete: select an id then prompt with the styled confirm
+  // dialog (replaces native window.confirm).
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   async function load() {
     const res = await fetch("/api/manuscripts");
@@ -56,15 +61,20 @@ export default function HistoryPage() {
     void load();
   }, []);
 
-  async function remove(id: string) {
-    if (!confirm("确认删除这条历史记录？此操作会同时删除磁盘上的稿件副本。")) return;
-    const res = await fetch(`/api/manuscripts/${id}`, { method: "DELETE" });
-    if (!res.ok) {
-      toast.error("删除失败");
-      return;
+  async function performDelete(id: string) {
+    setDeleteBusy(true);
+    try {
+      const res = await fetch(`/api/manuscripts/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        toast.error("删除失败");
+        return;
+      }
+      toast.success("已删除");
+      setItems((prev) => prev?.filter((it) => it.id !== id) ?? prev);
+    } finally {
+      setDeleteBusy(false);
+      setPendingDeleteId(null);
     }
-    toast.success("已删除");
-    setItems((prev) => prev?.filter((it) => it.id !== id) ?? prev);
   }
 
   return (
@@ -181,7 +191,7 @@ export default function HistoryPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => remove(it.id)}
+                    onClick={() => setPendingDeleteId(it.id)}
                     className="text-destructive hover:text-destructive"
                     aria-label="删除"
                   >
@@ -193,6 +203,22 @@ export default function HistoryPage() {
           })}
         </div>
       )}
+      <ConfirmDeleteDialog
+        open={pendingDeleteId !== null}
+        onClose={() => setPendingDeleteId(null)}
+        onConfirm={() => {
+          if (pendingDeleteId) void performDelete(pendingDeleteId);
+        }}
+        busy={deleteBusy}
+        title="确认删除该稿件？"
+        description={
+          <>
+            将永久删除磁盘上的稿件副本、解析结果、审稿备注以及所有有效的只读分享链接。
+            <br />
+            历史 audit log 中的解析记录会保留以便审计。
+          </>
+        }
+      />
     </div>
   );
 }

@@ -107,6 +107,20 @@ describe("title extraction", () => {
     expect(t).toContain("Chaotic Dynamics");
   });
 
+  it("merges arXiv-style 3-line title (LSTF-AD case)", () => {
+    const lines = [
+      "LSTF-AD: Lightweight Sender-Level",
+      "Temporal Feature Anomaly Detection for",
+      "VANET Message Streams",
+      "Anonymous Authors",
+      "Abstract",
+    ];
+    const t = extractTitle(lines);
+    expect(t).toContain("LSTF-AD");
+    expect(t).toContain("Temporal Feature Anomaly Detection");
+    expect(t).toContain("VANET Message Streams");
+  });
+
   it("does NOT merge when both lines are independent questions", () => {
     const lines = [
       "Are Large Language Models Conscious?",

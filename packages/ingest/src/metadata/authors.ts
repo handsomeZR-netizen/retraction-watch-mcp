@@ -14,6 +14,7 @@ import {
 import { isBoundaryLine } from "./boundaries.js";
 import {
   candidateLooksLikeTitle,
+  extractTitleRange,
   shouldMergeTitleContinuation,
   TITLE_NOISE_RE,
 } from "./title.js";
@@ -80,26 +81,23 @@ export function extractAuthors(
 }
 
 export function sliceAuthorBlock(lines: string[]): string[] {
-  let titleStart = -1;
-  for (let i = 0; i < Math.min(lines.length, 20); i += 1) {
-    if (candidateLooksLikeTitle(lines[i])) {
-      titleStart = i;
-      break;
-    }
-  }
-  if (titleStart < 0) return lines.slice(0, 30);
+  // Use the same title-range logic as extractTitle so any line consumed by
+  // the title (including 2-line + 3-line wraps) is excluded from the author
+  // scan. Previously this function had its own ad-hoc 2-merge loop that
+  // disagreed with title.ts and let the third title line ("VANET Message
+  // Streams") leak into the author list.
+  const range = extractTitleRange(lines);
+  // Without a title we still take the first chunk, capped tighter than
+  // before to avoid swallowing the abstract body.
+  if (!range) return lines.slice(0, 15);
 
-  let titleEnd = titleStart;
-  while (
-    titleEnd < titleStart + 2 &&
-    lines[titleEnd + 1] &&
-    shouldMergeTitleContinuation(lines[titleEnd], lines[titleEnd + 1])
-  ) {
-    titleEnd += 1;
-  }
-
+  // Cap scan at titleEnd + 15 (was 60). Real author/affiliation blocks
+  // finish well within that on every layout we tested (arXiv, Cell, Wiley,
+  // Procedia). 60 was loose enough that abstract sentences wrapped onto
+  // independent lines (e.g. "Forest. On the position-offset split…")
+  // slipped past every name-shape filter and got listed as authors.
   const block: string[] = [];
-  for (let i = titleEnd + 1; i < Math.min(lines.length, titleEnd + 60); i += 1) {
+  for (let i = range.endLine + 1; i < Math.min(lines.length, range.endLine + 16); i += 1) {
     const line = lines[i];
     if (isBoundaryLine(line)) break;
     block.push(line);
@@ -266,6 +264,13 @@ function looksLikeNameLine(line: string): boolean {
   return false;
 }
 
+// Connector / preposition / verb tokens that indicate a sentence fragment
+// rather than a name. "Forest. On the position-offset split", "Anomaly
+// Detection for", "VANET Message Streams" all leak through the casing-only
+// gate but are obviously not personal names.
+const SENTENCE_FRAGMENT_TOKEN_RE =
+  /^(for|of|in|on|to|by|via|with|under|over|and|the|or|as|from|into|using|under|toward|towards|across|against|about|when|where|while|since|because|that|which|whose|than|then|than|but|nor|so|yet)$/i;
+
 function isPlausibleName(name: string): boolean {
   // Strip footnote markers and trailing punctuation for the check
   const { base: rawBase } = stripFootnoteSuffix(name);
@@ -278,6 +283,16 @@ function isPlausibleName(name: string): boolean {
   if (AFFILIATION_RE.test(base)) return false;
   if (CORP_SUFFIX_RE.test(base)) return false;
   if (COUNTRY_OR_CITY_STOPWORDS.has(base)) return false;
+  // Sentence-fragment guards: "Forest. On the position-offset split" and
+  // friends are abstract-body wraps that the boundary scan didn't catch.
+  // (1) Mid-string "lower-case word + period + space + capital" is a
+  //     sentence boundary, never a name.
+  if (/[a-z]\.\s+[A-Z]/.test(base)) return false;
+  // (2) Any non-CJK token that's a connector / preposition / verb is a
+  //     give-away the line is prose ("Anomaly Detection for", "Message
+  //     Streams" passes — but "in / on / for / and" prepositions don't).
+  const hasConnector = tokens.some((t) => SENTENCE_FRAGMENT_TOKEN_RE.test(t));
+  if (hasConnector && !/[一-鿿]{2,}/.test(base)) return false;
   // Reject single-token "names" — almost always a country, city, or corp remnant.
   if (tokens.length === 1 && !/[一-鿿]{2,}/.test(base)) return false;
   // At least one token must look like a capitalized word with ≥2 letters,

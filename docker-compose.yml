@@ -1,7 +1,7 @@
 services:
   rw-screen:
     build: .
-    image: rw-screen:0.4.7
+    image: rw-screen:0.4.8
     container_name: rw-screen
     ports:
       # In production set RW_HOST_PORT=80 (or 443 with reverse proxy) in .env

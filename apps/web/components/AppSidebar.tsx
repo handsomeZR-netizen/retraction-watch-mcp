@@ -45,6 +45,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useSessions, type ActiveSession, progressPercent } from "@/components/sessions/SessionsContext";
+import { ConfirmDeleteDialog } from "@/components/ConfirmDeleteDialog";
 import { cn } from "@/lib/utils";
 
 interface ManuscriptItem {
@@ -84,6 +85,11 @@ export function AppSidebar() {
   const [recentOpen, setRecentOpen] = useState(true);
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  // Pending-delete state drives the ConfirmDeleteDialog. Replaces native
+  // window.confirm so the prompt matches the rest of the design system and
+  // doesn't get blocked by some browsers' notification settings.
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   // Persist collapsed state in localStorage so it survives navigation.
   useEffect(() => {
@@ -182,14 +188,20 @@ export function AppSidebar() {
     await load();
   }
 
-  async function deleteManuscript(id: string) {
-    if (!confirm("确认删除该稿件？此操作不可撤销。")) return;
-    const res = await fetch(`/api/manuscripts/${id}`, { method: "DELETE" });
-    if (!res.ok) {
-      toast.error("删除失败");
-      return;
+  async function performDelete(id: string) {
+    setDeleteBusy(true);
+    try {
+      const res = await fetch(`/api/manuscripts/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        toast.error("删除失败");
+        return;
+      }
+      toast.success("已删除");
+      await load();
+    } finally {
+      setDeleteBusy(false);
+      setPendingDeleteId(null);
     }
-    await load();
   }
 
   if (collapsed) {
@@ -356,7 +368,7 @@ export function AppSidebar() {
                           onSelect={() => router.push(`/result/${it.id}`)}
                           onMove={(pid) => organize(it.id, { projectId: pid })}
                           onArchive={() => organize(it.id, { archived: true })}
-                          onDelete={() => deleteManuscript(it.id)}
+                          onDelete={() => setPendingDeleteId(it.id)}
                           projects={projects}
                         />
                       ))
@@ -384,7 +396,7 @@ export function AppSidebar() {
                 onSelect={() => router.push(`/result/${it.id}`)}
                 onMove={(pid) => organize(it.id, { projectId: pid })}
                 onArchive={() => organize(it.id, { archived: true })}
-                onDelete={() => deleteManuscript(it.id)}
+                onDelete={() => setPendingDeleteId(it.id)}
                 projects={projects}
               />
             ))}
@@ -410,7 +422,7 @@ export function AppSidebar() {
                   onSelect={() => router.push(`/result/${it.id}`)}
                   onMove={(pid) => organize(it.id, { projectId: pid })}
                   onArchive={() => organize(it.id, { archived: false })}
-                  onDelete={() => deleteManuscript(it.id)}
+                  onDelete={() => setPendingDeleteId(it.id)}
                   projects={projects}
                   archivedView
                 />
@@ -425,6 +437,22 @@ export function AppSidebar() {
         <NavLink href="/history" icon={ClockCounterClockwise} label="历史" pathname={pathname} />
         <NavLink href="/admin" icon={ShieldStar} label="管理" pathname={pathname} adminOnly />
       </div>
+      <ConfirmDeleteDialog
+        open={pendingDeleteId !== null}
+        onClose={() => setPendingDeleteId(null)}
+        onConfirm={() => {
+          if (pendingDeleteId) void performDelete(pendingDeleteId);
+        }}
+        busy={deleteBusy}
+        title="确认删除该稿件？"
+        description={
+          <>
+            将永久删除磁盘上的稿件副本、解析结果、审稿备注以及所有有效的只读分享链接。
+            <br />
+            历史 audit log 中的解析记录会保留以便审计。
+          </>
+        }
+      />
     </aside>
   );
 }
