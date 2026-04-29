@@ -19,27 +19,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [authed, setAuthed] = useState<boolean | null>(null);
 
   useEffect(() => {
+    // The session is decided by the cookie, which doesn't change as the user
+    // navigates within the app — so we only check auth on mount and when an
+    // explicit `rw:auth-changed` event fires (login / logout dispatches it).
+    // Previously this effect re-ran on every pathname change and burned a
+    // ~440 ms HK round-trip per route hop.
     let cancelled = false;
-    fetch("/api/auth/me", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((j: { user: unknown | null }) => {
-        if (!cancelled) setAuthed(Boolean(j.user));
-      })
-      .catch(() => {
-        if (!cancelled) setAuthed(false);
-      });
-    function onAuthChanged() {
+    function refresh() {
       void fetch("/api/auth/me", { cache: "no-store" })
         .then((r) => r.json())
-        .then((j: { user: unknown | null }) => setAuthed(Boolean(j.user)))
-        .catch(() => setAuthed(false));
+        .then((j: { user: unknown | null }) => {
+          if (!cancelled) setAuthed(Boolean(j.user));
+        })
+        .catch(() => {
+          if (!cancelled) setAuthed(false);
+        });
     }
-    window.addEventListener("rw:auth-changed", onAuthChanged);
+    refresh();
+    window.addEventListener("rw:auth-changed", refresh);
     return () => {
       cancelled = true;
-      window.removeEventListener("rw:auth-changed", onAuthChanged);
+      window.removeEventListener("rw:auth-changed", refresh);
     };
-  }, [pathname]);
+  }, []);
 
   // Public routes: minimal layout (no sidebar, no header). The /share/[token]
   // pages need full width to render the result; auth pages stay in a centered
@@ -96,7 +98,7 @@ function PrivateLayout({
         <footer className="border-t border-border/40">
           <div className="max-w-5xl mx-auto px-3 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-muted-foreground">
             <span>© RW Screen · 仅辅助筛查，不作为学术不端裁定的终审依据</span>
-            <span className="font-mono">v0.3.0</span>
+            <span className="font-mono">v{process.env.NEXT_PUBLIC_APP_VERSION ?? "?"}</span>
           </div>
         </footer>
       </div>

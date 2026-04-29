@@ -103,14 +103,13 @@ export function AppSidebar() {
   }, [collapsed]);
 
   const load = useCallback(async () => {
-    const [m, p, a] = await Promise.all([
-      fetch("/api/manuscripts?limit=80&archived=false", { cache: "no-store" }).then((r) => r.json()),
-      fetch("/api/projects", { cache: "no-store" }).then((r) => r.json()),
-      fetch("/api/manuscripts?limit=30&archived=true", { cache: "no-store" }).then((r) => r.json()),
-    ]);
-    setItems(m.items ?? []);
-    setProjects(p.projects ?? []);
-    setArchivedItems(a.items ?? []);
+    // Single round-trip: /api/sidebar bundles items + archivedItems + projects.
+    const res = await fetch("/api/sidebar", { cache: "no-store" });
+    if (!res.ok) return;
+    const j = await res.json();
+    setItems(j.items ?? []);
+    setProjects(j.projects ?? []);
+    setArchivedItems(j.archivedItems ?? []);
   }, []);
 
   useEffect(() => {

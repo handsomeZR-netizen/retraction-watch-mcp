@@ -1,9 +1,11 @@
 import os from "node:os";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PHASE_PRODUCTION_BUILD } from "next/constants.js";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(path.join(appDir, "package.json"), "utf8"));
 const buildRuntimeTraceExcludes = [
   ".next/build-runtime/**/*",
   `${path.join(os.homedir(), ".config", "rw-screen").replaceAll("\\", "/")}/**/*`,
@@ -77,6 +79,9 @@ function createNextConfig(phase) {
       "mammoth",
       "yauzl",
     ],
+    env: {
+      NEXT_PUBLIC_APP_VERSION: pkg.version,
+    },
     outputFileTracingIncludes: {
       "/api/**": ["./node_modules/better-sqlite3/**"],
     },
