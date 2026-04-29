@@ -38,6 +38,17 @@ export interface TitleRange {
 }
 
 /**
+ * Some PDF text extractors glue the page-margin line number directly to the
+ * end of a heading line, producing strings like "Sender-Level1" or "VANET
+ * Message Streams2". Strip a trailing 1-2 digit suffix when it follows a
+ * lowercase letter (so legitimate alphanumerics like "GPT-4" or numeric
+ * acronyms aren't touched).
+ */
+function stripTrailingLineNumber(line: string): string {
+  return line.replace(/(?<=[a-z])(\d{1,2})$/i, "").trimEnd();
+}
+
+/**
  * Same logic as extractTitle, but also returns the line range consumed so
  * that downstream consumers (author extraction) can skip those lines instead
  * of running their own duplicate title detection that may disagree.
@@ -45,7 +56,7 @@ export interface TitleRange {
 export function extractTitleRange(lines: string[]): TitleRange | null {
   const horizon = Math.min(lines.length, 25);
   for (let i = 0; i < horizon; i += 1) {
-    let candidate = lines[i];
+    let candidate = stripTrailingLineNumber(lines[i]);
     if (!candidateLooksLikeTitle(candidate)) continue;
 
     if (i > 0) {
@@ -61,8 +72,10 @@ export function extractTitleRange(lines: string[]): TitleRange | null {
 
     let endLine = i;
     for (let wrap = 0; wrap < 2; wrap += 1) {
-      const next = lines[i + 1 + wrap];
-      if (!next || !shouldMergeTitleContinuation(candidate, next)) break;
+      const nextRaw = lines[i + 1 + wrap];
+      if (!nextRaw) break;
+      const next = stripTrailingLineNumber(nextRaw);
+      if (!shouldMergeTitleContinuation(candidate, next)) break;
       candidate = candidate.endsWith("-")
         ? candidate.slice(0, -1) + next
         : `${candidate} ${next}`;
@@ -80,6 +93,12 @@ export function extractTitleRange(lines: string[]): TitleRange | null {
 }
 
 export function extractTitle(lines: string[]): string | null {
+  // Delegate to extractTitleRange so the two stay in lockstep — easy
+  // bug magnet otherwise.
+  return extractTitleRange(lines)?.title ?? null;
+}
+
+function _legacy_extractTitle(lines: string[]): string | null {
   const horizon = Math.min(lines.length, 25);
   for (let i = 0; i < horizon; i += 1) {
     let candidate = lines[i];

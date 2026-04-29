@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -76,7 +76,7 @@ const VERDICT_META: Record<string, { Icon: PIcon; cls: string }> = {
 export function AppSidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { active, dismiss, refreshToken } = useSessions();
+  const { active, dismiss, refreshToken, bumpRefreshToken } = useSessions();
   const [items, setItems] = useState<ManuscriptItem[] | null>(null);
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [archivedItems, setArchivedItems] = useState<ManuscriptItem[] | null>(null);
@@ -197,6 +197,9 @@ export function AppSidebar() {
         return;
       }
       toast.success("已删除");
+      // Bump the shared refresh token first — that wakes up history page,
+      // workspace sidebar, etc. — and then load() refreshes our own list.
+      bumpRefreshToken();
       await load();
     } finally {
       setDeleteBusy(false);
@@ -680,12 +683,33 @@ function SessionRow({
         ? "text-destructive"
         : verdict?.cls ?? "text-muted-foreground";
 
+  // Hover-driven dropdown: opening on hover (not just on click) was the
+  // user's UX request — see the v0.4.9 thread. We keep it controlled so
+  // we can debounce the close on mouseleave (otherwise tracking the cursor
+  // from the trigger across the gap into the menu content immediately
+  // closes it). Brief 120 ms delay matches GitHub / Linear conventions.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleClose = () => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = setTimeout(() => setMenuOpen(false), 120);
+  };
+  const cancelClose = () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+  useEffect(() => () => { if (closeTimerRef.current) clearTimeout(closeTimerRef.current); }, []);
+
   return (
     <div
       className={cn(
         "px-2 py-1.5 rounded-md flex items-center gap-2 group",
         isActive ? "bg-accent" : "hover:bg-accent/40 transition-colors",
       )}
+      onMouseEnter={() => { cancelClose(); setMenuOpen(true); }}
+      onMouseLeave={scheduleClose}
     >
       <button
         onClick={onSelect}
@@ -697,7 +721,7 @@ function SessionRow({
         />
         <span className="text-xs truncate min-w-0 flex-1 block">{item.title ?? item.fileName}</span>
       </button>
-      <DropdownMenu>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <button
             className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"

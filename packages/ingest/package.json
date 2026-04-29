@@ -1,6 +1,6 @@
 {
   "name": "@rw/ingest",
-  "version": "0.4.8",
+  "version": "0.4.9",
   "type": "module",
   "description": "Manuscript ingest pipeline: PDF/Word/LaTeX extraction, metadata + references, LLM client.",
   "license": "MIT",
@@ -27,7 +27,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@rw/core": "0.4.8",
+    "@rw/core": "0.4.9",
     "mammoth": "1.8.0",
     "openai": "4.78.1",
     "tesseract.js": "5.1.1",

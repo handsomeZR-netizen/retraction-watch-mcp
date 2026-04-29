@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDeleteDialog } from "@/components/ConfirmDeleteDialog";
+import { useSessions } from "@/components/sessions/SessionsContext";
 import { cn } from "@/lib/utils";
 
 interface Item {
@@ -46,6 +47,8 @@ export default function HistoryPage() {
   // dialog (replaces native window.confirm).
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  // Used to broadcast "manuscript list changed" so the sidebar reloads.
+  const sessions = useSessions();
 
   async function load() {
     const res = await fetch("/api/manuscripts");
@@ -71,6 +74,9 @@ export default function HistoryPage() {
       }
       toast.success("已删除");
       setItems((prev) => prev?.filter((it) => it.id !== id) ?? prev);
+      // Tell the sidebar (and anyone else listening on refreshToken) to
+      // re-fetch so the deleted manuscript also disappears from "最近".
+      sessions.bumpRefreshToken();
     } finally {
       setDeleteBusy(false);
       setPendingDeleteId(null);

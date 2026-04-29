@@ -121,6 +121,23 @@ describe("title extraction", () => {
     expect(t).toContain("VANET Message Streams");
   });
 
+  it("strips trailing PDF line-number digits glued onto title text", () => {
+    // Some extractors produce "Sender-Level1" / "Streams2" because the
+    // page-margin line number was concatenated to the heading. Without the
+    // strip the digit becomes part of the title and breaks the merge to
+    // the second line (Sender-Level1 looks like an author footnote and
+    // shouldMergeTitleContinuation refuses).
+    const lines = [
+      "LSTF-AD: Lightweight Sender-Level1",
+      "Temporal Feature Anomaly Detection for2",
+      "VANET Message Streams3",
+      "Anonymous Authors4",
+      "Abstract",
+    ];
+    const t = extractTitle(lines);
+    expect(t).toBe("LSTF-AD: Lightweight Sender-Level Temporal Feature Anomaly Detection for VANET Message Streams");
+  });
+
   it("does NOT merge when both lines are independent questions", () => {
     const lines = [
       "Are Large Language Models Conscious?",
