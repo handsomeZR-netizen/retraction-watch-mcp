@@ -236,6 +236,23 @@ export function normalizeNameWithPinyin(name: string): NormalizedName {
   return normalizeName(name);
 }
 
+export function hasConflictingFullGivenNames(
+  left: NormalizedName,
+  right: NormalizedName,
+): boolean {
+  if (!left.surname || !right.surname || left.surname !== right.surname) {
+    return false;
+  }
+
+  const leftGiven = significantGivenTokens(givenNameTokens(left));
+  const rightGiven = significantGivenTokens(givenNameTokens(right));
+  if (leftGiven.length === 0 || rightGiven.length === 0) {
+    return false;
+  }
+
+  return leftGiven.join("") !== rightGiven.join("");
+}
+
 function buildName(
   original: string,
   basis: string,
@@ -280,6 +297,17 @@ function buildName(
     isChinese,
     pinyin: pinyinForm,
   };
+}
+
+function givenNameTokens(name: NormalizedName): string[] {
+  if (name.tokens.length <= 1) {
+    return [];
+  }
+  return name.isChinese ? name.tokens.slice(1) : name.tokens.slice(0, -1);
+}
+
+function significantGivenTokens(tokens: string[]): string[] {
+  return tokens.filter((token) => token.length > 1);
 }
 
 export function normalizeInstitution(value: string): string {

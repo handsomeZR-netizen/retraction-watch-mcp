@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  hasConflictingFullGivenNames,
   isPublicEmailDomain,
   jaccardSimilarity,
   normalizeDoi,
@@ -55,6 +56,22 @@ describe("normalization", () => {
     const cn = normalizeName("王伟");
     expect(cn.surname).toBe("wang");
     expect(cn.surname).not.toBe("wei");
+  });
+
+  it.skip("treats Latin surname-first initials as surname-first for repository lookup", () => {
+    const name = normalizeName("Zhang W");
+    expect(name.surname).toBe("zhang");
+    expect(name.signature).toBe("zhang:zw");
+  });
+
+  it("detects full given-name conflicts behind shared surname-initial signatures", () => {
+    const miao = normalizeName("Miao Xu");
+    const mei = normalizeName("Mei Xu");
+    expect(miao.signature).toBe(mei.signature);
+    expect(miao.variants).toContain("m xu");
+    expect(mei.variants).toContain("m xu");
+    expect(hasConflictingFullGivenNames(miao, mei)).toBe(true);
+    expect(hasConflictingFullGivenNames(normalizeName("M Xu"), mei)).toBe(false);
   });
 
   it("preserves Hebrew, Arabic, and Chinese author names during tokenization", () => {

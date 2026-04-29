@@ -10,6 +10,7 @@ import type {
 import { BALANCED_POLICY, type ScreeningPolicy } from "../policy.js";
 import {
   extractYear,
+  hasConflictingFullGivenNames,
   isLikelyChinese,
   jaccardSimilarity,
   normalizeDoi,
@@ -247,9 +248,11 @@ function scoreAuthors(
     for (const rec of recordNorm) {
       const exactMatch =
         ref.normalized && rec.normalized && ref.normalized === rec.normalized;
+      const fullGivenConflict = hasConflictingFullGivenNames(ref, rec);
       const variantMatch =
-        ref.variants.some((v) => rec.variants.includes(v)) ||
-        (Boolean(ref.signature) && Boolean(rec.signature) && ref.signature === rec.signature);
+        !fullGivenConflict &&
+        (ref.variants.some((v) => rec.variants.includes(v)) ||
+          (Boolean(ref.signature) && Boolean(rec.signature) && ref.signature === rec.signature));
       if (exactMatch || variantMatch) {
         const weight = policy.weights.referenceAuthorOverlap;
         const message = `Reference author "${ref.original}" matches record author "${rec.original}".`;
@@ -265,7 +268,7 @@ function scoreAuthors(
         ref.initials &&
         rec.initials &&
         ref.initials[0] === rec.initials[0];
-      if (surnameMatch) {
+      if (surnameMatch && !fullGivenConflict) {
         const weight = policy.weights.referenceAuthorSurnameOnly;
         const message = `Reference author "${ref.original}" shares surname and first initial with record author "${rec.original}".`;
         if (!bestEvidence || weight > bestEvidence.weight) {
