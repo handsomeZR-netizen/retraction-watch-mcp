@@ -43,6 +43,15 @@ function resolveSessionSecret(): string {
 
 const SECRET = resolveSessionSecret();
 
+// `Secure` cookies are only sent / saved by the browser on HTTPS connections.
+// If the deployment is HTTP-only (e.g. raw IP access during early rollout),
+// setting Secure=true would lock the user out — the cookie set on POST /login
+// is silently dropped, and every subsequent request is treated as
+// unauthenticated, redirecting back to /login. So tie Secure to RW_BASE_URL's
+// protocol: HTTPS deployments stay strict, HTTP deployments still work.
+// When RW_BASE_URL is unset (dev fallback), default to false to avoid surprises.
+const baseUrlIsHttps = (process.env.RW_BASE_URL ?? "").startsWith("https://");
+
 const sessionOptions: SessionOptions = {
   cookieName: "rw_screen_session",
   password: SECRET,
@@ -50,7 +59,7 @@ const sessionOptions: SessionOptions = {
   cookieOptions: {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env.NODE_ENV === "production" && baseUrlIsHttps,
     path: "/",
     maxAge: SESSION_TTL_SECONDS - 60,
   },
