@@ -9,7 +9,23 @@ import {
   useRef,
   useState,
 } from "react";
+import { nanoid } from "nanoid";
 import { toast } from "sonner";
+
+// crypto.randomUUID() requires a secure context (HTTPS or localhost). Plain
+// HTTP deployments (e.g. an IP-only Aliyun ECS during early rollout) fall
+// back to nanoid, which only needs Math.random() / crypto.getRandomValues
+// and works everywhere.
+function genTempId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    try {
+      return crypto.randomUUID();
+    } catch {
+      /* fall through */
+    }
+  }
+  return nanoid();
+}
 
 export interface ActiveSession {
   manuscriptId: string;
@@ -128,7 +144,7 @@ export function SessionsProvider({ children }: { children: React.ReactNode }) {
 
   const start = useCallback(
     async ({ file, projectId }: { file: File; projectId?: string | null }) => {
-      const placeholderId = `tmp-${crypto.randomUUID()}`;
+      const placeholderId = `tmp-${genTempId()}`;
       const seedSession: ActiveSession = {
         manuscriptId: placeholderId,
         fileName: file.name,
