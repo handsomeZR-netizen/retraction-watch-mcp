@@ -11,6 +11,11 @@ interface DropzoneProps {
 }
 
 export function Dropzone({ onDrop, busy, hint }: DropzoneProps) {
+  // Don't pass `disabled: busy` — react-dropzone v14 unmounts every drag /
+  // drop listener when disabled is true, so once a parse starts the user can
+  // no longer drop another file (the drop event silently has no handler).
+  // Use `noClick: busy` instead: keep drag listeners attached at all times,
+  // only suppress the file-picker click affordance while parsing is active.
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     multiple: true,
@@ -22,7 +27,7 @@ export function Dropzone({ onDrop, busy, hint }: DropzoneProps) {
       "text/x-tex": [".tex"],
       "application/zip": [".zip"],
     },
-    disabled: busy,
+    noClick: busy,
   });
 
   return (

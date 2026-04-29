@@ -1,6 +1,6 @@
 {
   "name": "rw-screen-monorepo",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "private": true,
   "type": "module",
   "description": "Retraction Watch screening monorepo: core engine + ingest pipeline + Next.js web app.",
