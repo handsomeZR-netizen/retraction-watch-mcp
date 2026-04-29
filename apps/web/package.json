@@ -1,6 +1,6 @@
 {
   "name": "@rw/web",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -27,8 +27,8 @@
     "@radix-ui/react-switch": "1.1.2",
     "@radix-ui/react-tabs": "1.1.2",
     "@radix-ui/react-tooltip": "1.1.6",
-    "@rw/core": "0.4.2",
-    "@rw/ingest": "0.4.2",
+    "@rw/core": "0.4.3",
+    "@rw/ingest": "0.4.3",
     "bcryptjs": "2.4.3",
     "better-sqlite3": "11.7.0",
     "class-variance-authority": "0.7.1",

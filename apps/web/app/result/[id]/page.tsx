@@ -10,6 +10,9 @@ import {
   ChartBar,
   UsersThree,
   DownloadSimple,
+  Link as LinkIcon,
+  NotePencil,
+  UserCircle,
 } from "@phosphor-icons/react/dist/ssr";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -21,6 +24,7 @@ import { ReferenceTable } from "@/components/ReferenceTable";
 import { ShareLinkManager } from "@/components/ShareLinkManager";
 import { ResultLayout } from "@/components/ResultLayout";
 import { VerdictCard } from "@/components/VerdictCard";
+import { CollapsiblePanel } from "@/components/result/CollapsiblePanel";
 import { Separator } from "@/components/ui/separator";
 import { requireUser } from "@/lib/auth/guard";
 import { canAccessManuscript } from "@/lib/auth/scope";
@@ -101,17 +105,6 @@ export default async function ResultPage({
 
         <VerdictCard verdict={result.verdict} totals={result.totals} />
       </Card>
-
-      <section className="grid md:grid-cols-2 gap-4">
-        <AssigneePicker manuscriptId={id} />
-        <ShareLinkManager manuscriptId={id} />
-      </section>
-
-      <ManuscriptNotes
-        manuscriptId={id}
-        initialNotes={manuscript?.notes ?? null}
-        initialUpdatedAt={manuscript?.notes_updated_at ?? null}
-      />
 
       {result.screenedAuthors && result.screenedAuthors.length > 0 && (
         <AuthorSummaryCard authors={result.screenedAuthors} />
@@ -196,6 +189,31 @@ export default async function ResultPage({
       )}
 
       <ReferenceTable entries={result.screenedReferences} />
+
+      <section className="grid md:grid-cols-3 gap-2">
+        <CollapsiblePanel
+          icon={<UserCircle className="h-4 w-4" weight="duotone" />}
+          label="审稿分配"
+        >
+          <AssigneePicker manuscriptId={id} />
+        </CollapsiblePanel>
+        <CollapsiblePanel
+          icon={<LinkIcon className="h-4 w-4" weight="duotone" />}
+          label="只读分享链接"
+        >
+          <ShareLinkManager manuscriptId={id} />
+        </CollapsiblePanel>
+        <CollapsiblePanel
+          icon={<NotePencil className="h-4 w-4" weight="duotone" />}
+          label="审稿备注"
+        >
+          <ManuscriptNotes
+            manuscriptId={id}
+            initialNotes={manuscript?.notes ?? null}
+            initialUpdatedAt={manuscript?.notes_updated_at ?? null}
+          />
+        </CollapsiblePanel>
+      </section>
 
       <section className="grid md:grid-cols-2 gap-4">
         <Card>
