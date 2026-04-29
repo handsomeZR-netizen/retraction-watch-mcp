@@ -37,7 +37,10 @@ function createNextConfig(phase) {
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self' data:",
     "connect-src 'self'",
-    "frame-ancestors 'none'",
+    // 'self' allows the same-origin PDF preview iframe on /result/<id> to
+    // load /api/result/<id>/file without exposing the app to third-party
+    // framing (clickjacking).
+    "frame-ancestors 'self'",
     "base-uri 'self'",
     "form-action 'self'",
     "object-src 'none'",
@@ -45,7 +48,10 @@ function createNextConfig(phase) {
 
   const securityHeaders = [
     { key: "X-Content-Type-Options", value: "nosniff" },
-    { key: "X-Frame-Options", value: "DENY" },
+    // SAMEORIGIN (not DENY) so the result page can iframe-preview its own PDF.
+    // CSP frame-ancestors 'self' above gives the same protection on modern
+    // browsers; X-Frame-Options is the legacy fallback.
+    { key: "X-Frame-Options", value: "SAMEORIGIN" },
     { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
     {
       key: "Permissions-Policy",
