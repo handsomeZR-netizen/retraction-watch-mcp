@@ -1,7 +1,8 @@
 "use client";
 
 import { CloudArrowUp, FilePdf, FileDoc, FileText, Lock } from "@phosphor-icons/react";
-import { useDropzone } from "react-dropzone";
+import { useDropzone, type FileRejection } from "react-dropzone";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 interface DropzoneProps {
@@ -10,24 +11,30 @@ interface DropzoneProps {
   hint?: string;
 }
 
+const ACCEPTED_EXT = /\.(pdf|docx|tex|zip)$/i;
+
 export function Dropzone({ onDrop, busy, hint }: DropzoneProps) {
-  // Don't pass `disabled: busy` — react-dropzone v14 unmounts every drag /
-  // drop listener when disabled is true, so once a parse starts the user can
-  // no longer drop another file (the drop event silently has no handler).
-  // Use `noClick: busy` instead: keep drag listeners attached at all times,
-  // only suppress the file-picker click affordance while parsing is active.
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     multiple: true,
     maxFiles: 8,
-    accept: {
-      "application/pdf": [".pdf"],
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
-      "application/x-tex": [".tex"],
-      "text/x-tex": [".tex"],
-      "application/zip": [".zip"],
+    // No `accept` — Chromium on Windows reports file.type as "" for some .docx
+    // / .tex files, which react-dropzone silently rejects. The server already
+    // sniffs magic bytes (lib/manuscripts/upload-validation.ts) and is the
+    // real guardrail, so we filter on extension here only as UX hint.
+    validator: (file) => {
+      if (!ACCEPTED_EXT.test(file.name)) {
+        return { code: "file-invalid-type", message: "仅支持 .pdf / .docx / .tex / .zip" };
+      }
+      return null;
     },
-    noClick: busy,
+    onDropRejected: (rejections: FileRejection[]) => {
+      const reasons = new Set(
+        rejections.flatMap((r) => r.errors.map((e) => e.message)),
+      );
+      toast.error(`无法接收 ${rejections.length} 个文件：${[...reasons].join("；")}`);
+    },
+    disabled: busy,
   });
 
   return (
