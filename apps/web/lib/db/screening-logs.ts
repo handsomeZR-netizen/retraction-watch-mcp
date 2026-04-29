@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import type { ManuscriptScreenResult } from "@rw/core";
 import { getAppDb } from "./app-db";
 
@@ -99,7 +100,13 @@ export function writeScreeningLog(input: WriteInput): void {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
-      result.manuscriptId,
+      // Use a fresh nanoid as PK rather than reusing manuscriptId. Reusing
+      // manuscriptId broke when a single manuscript was screened more than
+      // once (re-upload after delete, or concurrent worker race) — the second
+      // write hit `UNIQUE constraint failed: screening_logs.id`. The log is
+      // an immutable audit-trail row keyed by created_at/sha256/fileName, so
+      // multiple rows per manuscript is the correct shape.
+      nanoid(),
       userId,
       workspaceId,
       scope,

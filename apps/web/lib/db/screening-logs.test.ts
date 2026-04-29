@@ -72,7 +72,10 @@ function makeResult(overrides: Partial<ManuscriptScreenResult> = {}): Manuscript
 }
 
 function insertAt(id: string, createdAt: string, overrides: Partial<ManuscriptScreenResult> = {}): void {
-  // Use writeScreeningLog for the canonical write path, then patch created_at to control ordering.
+  // Use writeScreeningLog for the canonical write path, then patch the
+  // generated nanoid + created_at to a deterministic fixture id so the
+  // pagination/filter assertions remain readable. Real production code
+  // never overrides the id; this is a test-only convenience.
   logs.writeScreeningLog({
     result: makeResult({ manuscriptId: id, ...overrides }),
     userId: (overrides as Partial<{ user_id: string }>).user_id ?? "user-1",
@@ -80,7 +83,9 @@ function insertAt(id: string, createdAt: string, overrides: Partial<ManuscriptSc
     bytes: 1234,
     sha256: null,
   });
-  db.prepare("UPDATE screening_logs SET created_at = ? WHERE id = ?").run(createdAt, id);
+  db.prepare(
+    `UPDATE screening_logs SET id = ?, created_at = ? WHERE rowid = (SELECT MAX(rowid) FROM screening_logs)`,
+  ).run(id, createdAt);
 }
 
 describe("screening-logs ordering and pagination", () => {
@@ -281,7 +286,9 @@ describe("screening-logs writeScreeningLog", () => {
       sha256: null,
     });
 
-    const row = db.prepare("SELECT hit_summary_json FROM screening_logs WHERE id = 'h1'").get() as
+    // The screening log row id is now an internal nanoid (not the manuscript
+    // id), so look up by the most recent insert.
+    const row = db.prepare("SELECT hit_summary_json FROM screening_logs ORDER BY rowid DESC LIMIT 1").get() as
       | { hit_summary_json: string | null }
       | undefined;
     expect(row?.hit_summary_json).not.toBeNull();
