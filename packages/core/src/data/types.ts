@@ -5,6 +5,31 @@ export type RetractionNature =
   | "Reinstatement"
   | "";
 
+export type SourceTag =
+  | "regex_doi"
+  | "regex_pmid"
+  | "regex_text"
+  | "bibtex"
+  | "llm"
+  | "crossref"
+  | "europepmc";
+
+export interface FieldProvenance<T> {
+  value: T;
+  source: SourceTag;
+  confidence: number;
+  conflicts?: { source: SourceTag; value: T }[];
+}
+
+export interface ProvenanceMap {
+  title?: FieldProvenance<string | null>;
+  doi?: FieldProvenance<string | null>;
+  pmid?: FieldProvenance<string | null>;
+  year?: FieldProvenance<number | null>;
+  authors?: FieldProvenance<string[]>;
+  journal?: FieldProvenance<string | null>;
+}
+
 export interface RawRwRecord {
   "Record ID": string;
   Title: string;
@@ -87,6 +112,10 @@ export interface MatchEvidence {
   strength: "strong" | "medium" | "weak" | "negative" | "info";
   message: string;
   scoreDelta: number;
+  // Records whether the field that drove this evidence came from local
+  // extraction or external enrichment, so audits can distinguish "DOI was in
+  // the manuscript" from "DOI was supplied by Crossref".
+  inputSource?: SourceTag;
 }
 
 export interface MatchCandidate {
@@ -186,7 +215,8 @@ export interface ManuscriptReference {
   doi: string | null;
   pmid: string | null;
   journal: string | null;
-  source: "regex_doi" | "regex_pmid" | "regex_text" | "llm" | "bibtex";
+  source: SourceTag;
+  provenance?: ProvenanceMap;
 }
 
 export interface ScreenedReference {
@@ -226,6 +256,10 @@ export interface ManuscriptScreenResult {
     deepseekCalls: number;
     crossrefCalls: number;
     cloudOcrCalls: number;
+    epmcCalls?: number;
+    llmCalls?: number;
+    cacheHits?: number;
+    enrichmentFailures?: number;
   };
   consequentialUseWarning: string;
   generatedAt: string;

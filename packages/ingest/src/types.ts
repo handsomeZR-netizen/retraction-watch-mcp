@@ -1,3 +1,5 @@
+import type { ProvenanceMap, SourceTag } from "@rw/core/types";
+
 export interface ExtractedDocument {
   fullText: string;
   pages: ExtractedPage[];
@@ -45,7 +47,11 @@ export interface StructuredReference {
   doi: string | null;
   pmid: string | null;
   journal: string | null;
-  source: "regex_doi" | "regex_pmid" | "regex_text" | "llm" | "bibtex";
+  // Aggregate label — set to the source of the highest-confidence field, or
+  // the only resolver when only one ran. Per-field detail lives in
+  // `provenance` for the enriched pipeline.
+  source: SourceTag;
+  provenance?: ProvenanceMap;
 }
 
 export interface IngestProgressEvent {
