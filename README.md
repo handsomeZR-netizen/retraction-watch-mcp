@@ -4,6 +4,8 @@
 
 **Local-first academic-integrity screening against the Retraction Watch database.**
 
+English · [简体中文](./README.zh.md)
+
 [![CI](https://img.shields.io/github/actions/workflow/status/handsomeZR-netizen/retraction-watch-mcp/ci.yml?branch=main&label=CI&logo=github)](https://github.com/handsomeZR-netizen/retraction-watch-mcp/actions)
 [![Version](https://img.shields.io/badge/version-0.4.0-2ea44f)](./package.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
