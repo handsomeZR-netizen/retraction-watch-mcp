@@ -8,6 +8,7 @@ dist/
 **/.turbo/
 /data/
 /config/
+/test-corpus/
 /mcpb/build/
 *.mcpb
 .env

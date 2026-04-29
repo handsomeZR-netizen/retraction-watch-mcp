@@ -27,8 +27,14 @@ export async function validateUploadFile(
   }
 
   const head = await readSlice(file, 0, Math.min(file.size, HEAD_SNIFF_BYTES));
+  // For files larger than HEAD_SNIFF_BYTES we have to read the actual tail
+  // separately — reusing `head` as the tail dropped %%EOF for any PDF whose
+  // body lay between HEAD_SNIFF_BYTES and TAIL_SNIFF_BYTES (~256 KB to 1 MB),
+  // since the marker sits at the file end and was outside both windows.
   const tailStart = Math.max(0, file.size - TAIL_SNIFF_BYTES);
-  const tail = tailStart === 0 ? head : await readSlice(file, tailStart, file.size);
+  const tail = file.size <= HEAD_SNIFF_BYTES
+    ? head
+    : await readSlice(file, tailStart, file.size);
   const sniffed = sniffManuscriptType(file.name, head, tail, file.size);
   if (!sniffed.ok) return sniffed;
 

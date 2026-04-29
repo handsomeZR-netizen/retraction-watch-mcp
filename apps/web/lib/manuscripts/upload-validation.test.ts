@@ -56,6 +56,19 @@ describe("manuscript upload validation", () => {
     });
   });
 
+  it("accepts a mid-size PDF whose %%EOF lives past the head sniff window", async () => {
+    // 442 KB — between HEAD_SNIFF_BYTES (256 KB) and TAIL_SNIFF_BYTES (1 MB).
+    // The boundary that broke real OA PDFs in the 0.4.x series: the validator
+    // reused `head` as the "tail" buffer when tailStart was 0, which it always
+    // was for files <= 1 MB, so the actual file end (where %%EOF lives) was
+    // never sniffed.
+    const size = 442_139;
+    const head = Buffer.from("%PDF-1.7\n" + "x".repeat(2048));
+    const tail = Buffer.from("startxref\n421660\n%%EOF\n");
+    const result = await validateUploadFile(hugeFileLike("paper.pdf", size, head, tail));
+    expect(result).toMatchObject({ ok: true, fileType: "pdf" });
+  });
+
   it("rejects a file over the configured size cap before reading slices", async () => {
     const result = await validateUploadFile({
       name: "paper.pdf",
