@@ -34,6 +34,10 @@ const repoStub = {
   getSourceSnapshot: () => null,
 };
 
+function recordWith(overrides: Partial<RwRecord>): RwRecord {
+  return { ...baseRecord, ...overrides };
+}
+
 describe("screenReference", () => {
   it("confirms exact DOI hit", async () => {
     const result = await screenReference(repoStub, {
@@ -66,6 +70,26 @@ describe("screenReference", () => {
     });
     expect(["likely_match", "possible_match"]).toContain(result.verdict);
     expect(result.matchedFields).toEqual(expect.arrayContaining(["title"]));
+  });
+
+  it("does not let full given-name author collisions boost partial title matches", async () => {
+    const collisionRecord = recordWith({ author: "Mei Xu" });
+    const repository = {
+      ...repoStub,
+      findReferenceCandidates: () => [collisionRecord],
+      getRecordsByDoi: () => [],
+      getRecordsByPmid: () => [],
+    };
+
+    const result = await screenReference(repository, {
+      raw: "",
+      title: "Machine Learning Health",
+      authors: ["Miao Xu"],
+    });
+
+    expect(result.verdict).toBe("no_match");
+    expect(result.candidates).toHaveLength(0);
+    expect(result.nearMisses[0]?.matchedFields).not.toContain("authors");
   });
 
   it("returns no_match when there are no matched fields", async () => {

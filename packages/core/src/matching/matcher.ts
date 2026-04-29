@@ -17,6 +17,7 @@ import {
 } from "../policy.js";
 import {
   domainTokens,
+  hasConflictingFullGivenNames,
   isPublicEmailDomain,
   normalizeDoi,
   normalizeEmailDomain,
@@ -184,6 +185,10 @@ function scoreName(
         message: `Author name exactly matches "${author.original}".`,
         scoreDelta: policy.weights.nameExact,
       });
+    }
+
+    if (hasConflictingFullGivenNames(queryName, author)) {
+      continue;
     }
 
     if (queryName.variants.includes(author.normalized) || author.variants.includes(queryName.normalized)) {

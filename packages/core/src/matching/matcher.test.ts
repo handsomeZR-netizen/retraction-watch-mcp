@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RwRecord, ScreenPersonInput } from "../data/types.js";
-import { CONSEQUENTIAL_USE_WARNING, STRICT_POLICY } from "../policy.js";
+import { BALANCED_POLICY, CONSEQUENTIAL_USE_WARNING, STRICT_POLICY } from "../policy.js";
 import { screenPerson, scoreCandidate } from "./matcher.js";
 
 const baseRecord: RwRecord = {
@@ -26,6 +26,10 @@ const baseRecord: RwRecord = {
   paywalled: "No",
   notes: "",
 };
+
+function recordWith(overrides: Partial<RwRecord>): RwRecord {
+  return { ...baseRecord, ...overrides };
+}
 
 describe("matcher", () => {
   it("confirms exact DOI when the queried name also matches an author", () => {
@@ -79,6 +83,75 @@ describe("matcher", () => {
 
     expect(candidate.verdict).toBe("no_match");
     expect(candidate.score).toBeLessThan(0.48);
+  });
+
+  it("rejects same-surname initial collisions when full given names differ", () => {
+    const cases = [
+      {
+        recordAuthor: "Mei Xu",
+        recordInstitution: "Wuhan University of Engineering Science",
+        queryName: "Miao Xu",
+        queryInstitution: "Beihua University, civil engineering",
+      },
+      {
+        recordAuthor: "Ling Zhang",
+        recordInstitution: "Wuhan Central Hospital",
+        queryName: "Lizeng Zhang",
+        queryInstitution: "Haomo.AI",
+      },
+    ];
+
+    for (const item of cases) {
+      const record = recordWith({
+        recordId: `collision-${item.recordAuthor}`,
+        author: item.recordAuthor,
+        institution: item.recordInstitution,
+      });
+
+      const withInstitution = scoreCandidate(record, {
+        name: item.queryName,
+        institution: item.queryInstitution,
+      });
+      expect(withInstitution.verdict).toBe("no_match");
+      expect(withInstitution.score).toBeLessThan(BALANCED_POLICY.thresholds.possibleMatch);
+      expect(withInstitution.matchedFields).not.toContain("name");
+
+      const withoutCorroboration = scoreCandidate(record, {
+        name: item.queryName,
+      });
+      expect(withoutCorroboration.verdict).toBe("no_match");
+      expect(withoutCorroboration.score).toBeLessThan(BALANCED_POLICY.thresholds.possibleMatch);
+      expect(withoutCorroboration.matchedFields).not.toContain("name");
+    }
+  });
+
+  it("does not turn full-given-name collisions into review-triggering near misses", async () => {
+    const record = recordWith({
+      author: "Mei Xu",
+      institution: "Wuhan University of Engineering Science",
+    });
+    const repository = {
+      findCandidateRecords: () => [record],
+      getSourceSnapshot: () => null,
+    };
+
+    const result = await screenPerson(repository as never, {
+      name: "Miao Xu",
+      institution: "Beihua University, civil engineering",
+    });
+
+    expect(result.verdict).toBe("no_match");
+    expect(result.reviewRequired).toBe(false);
+    expect(result.candidates).toHaveLength(0);
+    expect(result.nearMisses).toHaveLength(0);
+  });
+
+  it("still treats initial-only author abbreviations as soft name evidence", () => {
+    const record = recordWith({ author: "Wei Zhang" });
+    const candidate = scoreCandidate(record, { name: "Zhang W" });
+
+    expect(candidate.verdict).toBe("possible_match");
+    expect(candidate.matchedFields).toContain("name");
   });
 
   it("does not use public email domain as positive evidence", () => {
