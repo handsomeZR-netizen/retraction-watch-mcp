@@ -55,8 +55,16 @@ export function getDataDir(): string {
 }
 
 let cachedConfig: AppConfig | null = null;
+let cachedConfigSource: ConfigSource = "default";
 let cachedAt = 0;
 const CACHE_TTL_MS = 60_000;
+
+/**
+ * Where the live LLM config originated from. Lets the UI flag the case where
+ * `RW_LLM_API_KEY` (or `DEEPSAPI_API_KEY`) silently flipped LLM on without
+ * the operator clicking anything in /settings.
+ */
+export type ConfigSource = "file" | "env" | "default";
 
 export async function loadConfig(): Promise<AppConfig> {
   if (cachedConfig && Date.now() - cachedAt < CACHE_TTL_MS) return cachedConfig;
@@ -64,11 +72,19 @@ export async function loadConfig(): Promise<AppConfig> {
     const text = await fs.readFile(getConfigPath(), "utf8");
     const raw = JSON.parse(text) as Partial<AppConfig>;
     cachedConfig = mergeConfig(raw);
+    cachedConfigSource = "file";
   } catch {
-    cachedConfig = mergeConfig(envOverrides());
+    const overrides = envOverrides();
+    cachedConfig = mergeConfig(overrides);
+    cachedConfigSource = overrides.llm ? "env" : "default";
   }
   cachedAt = Date.now();
   return cachedConfig;
+}
+
+export async function loadConfigSource(): Promise<ConfigSource> {
+  await loadConfig();
+  return cachedConfigSource;
 }
 
 export async function saveConfig(input: Partial<AppConfig>): Promise<AppConfig> {
@@ -76,6 +92,7 @@ export async function saveConfig(input: Partial<AppConfig>): Promise<AppConfig> 
   await fs.mkdir(getConfigDir(), { recursive: true });
   await fs.writeFile(getConfigPath(), JSON.stringify(merged, null, 2));
   cachedConfig = merged;
+  cachedConfigSource = "file";
   cachedAt = Date.now();
   return merged;
 }

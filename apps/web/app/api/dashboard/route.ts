@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/guard";
 import { activeScope } from "@/lib/auth/scope";
-import { loadConfig } from "@/lib/config";
+import { loadConfig, loadConfigSource } from "@/lib/config";
 import { getAppDb } from "@/lib/db/app-db";
-import { findUserById } from "@/lib/db/users";
+import { findUserById, getUserLlmSettings } from "@/lib/db/users";
 import { getWorkspace, listWorkspaceMembers } from "@/lib/db/workspaces";
 import { getRepository } from "@/lib/repository";
 
@@ -91,6 +91,28 @@ export async function GET() {
   }));
 
   const config = await loadConfig();
+  const configSource = await loadConfigSource();
+  // Mirror the merge that parse-runner.ts does at job time so the banner
+  // shows what would *actually* run if the user uploaded a manuscript right
+  // now — including the case where RW_LLM_API_KEY silently flipped LLM on.
+  const userLlm = getUserLlmSettings(user);
+  const userOverrode =
+    userLlm !== null &&
+    (userLlm.enabled !== undefined ||
+      Boolean(userLlm.apiKey) ||
+      Boolean(userLlm.baseUrl) ||
+      Boolean(userLlm.model));
+  const effEnabled = userLlm?.enabled ?? config.llm.enabled;
+  const effApiKey = userLlm?.apiKey || config.llm.apiKey;
+  const effModel = userLlm?.model || config.llm.model;
+  const llmSource: "user" | "env" | "config" | "default" = userOverrode
+    ? "user"
+    : configSource === "env"
+      ? "env"
+      : configSource === "file"
+        ? "config"
+        : "default";
+
   let source: { rowCount: number; generatedOn: string | null } | null = null;
   try {
     const repo = await getRepository();
@@ -134,8 +156,10 @@ export async function GET() {
     stats: { ...stats, last7d },
     recent,
     llm: {
-      enabled: config.llm.enabled && config.llm.apiKey.length > 0,
-      model: config.llm.model,
+      enabled: effEnabled && effApiKey.length > 0,
+      model: effModel,
+      source: llmSource,
+      hasApiKey: effApiKey.length > 0,
     },
     source,
   });

@@ -39,7 +39,12 @@ interface Dashboard {
     title: string | null;
     totals: Record<string, number> | null;
   }>;
-  llm: { enabled: boolean; model: string };
+  llm: {
+    enabled: boolean;
+    model: string;
+    source: "user" | "env" | "config" | "default";
+    hasApiKey: boolean;
+  };
   source: { rowCount: number; generatedOn: string | null } | null;
 }
 
@@ -86,6 +91,7 @@ export default function HomePage() {
               workspace={data.workspace}
               llm={data.llm}
               source={data.source}
+              onLlmChanged={loadDashboard}
             />
           ) : (
             <div className="space-y-3">
