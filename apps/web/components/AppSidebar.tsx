@@ -683,24 +683,35 @@ function SessionRow({
         ? "text-destructive"
         : verdict?.cls ?? "text-muted-foreground";
 
-  // Hover-driven dropdown: opening on hover (not just on click) was the
-  // user's UX request — see the v0.4.9 thread. We keep it controlled so
-  // we can debounce the close on mouseleave (otherwise tracking the cursor
-  // from the trigger across the gap into the menu content immediately
-  // closes it). Brief 120 ms delay matches GitHub / Linear conventions.
+  // Two-stage hover: row hover only reveals the "⋮" button (CSS group-
+  // hover); the menu itself only opens when the cursor lingers on the
+  // button (or on the open menu) for 200 ms. The previous integration
+  // that opened on row-hover obscured the row's title with the dropdown
+  // overlay (see v0.4.9 user screenshot). 200 ms open / 150 ms close
+  // matches GitHub / Linear; click on ⋮ opens immediately.
   const [menuOpen, setMenuOpen] = useState(false);
+  const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleOpen = () => {
+    if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null; }
+    if (openTimerRef.current) clearTimeout(openTimerRef.current);
+    openTimerRef.current = setTimeout(() => setMenuOpen(true), 200);
+  };
   const scheduleClose = () => {
+    if (openTimerRef.current) { clearTimeout(openTimerRef.current); openTimerRef.current = null; }
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = setTimeout(() => setMenuOpen(false), 120);
+    closeTimerRef.current = setTimeout(() => setMenuOpen(false), 150);
   };
   const cancelClose = () => {
-    if (closeTimerRef.current) {
-      clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
-    }
+    if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null; }
   };
-  useEffect(() => () => { if (closeTimerRef.current) clearTimeout(closeTimerRef.current); }, []);
+  useEffect(
+    () => () => {
+      if (openTimerRef.current) clearTimeout(openTimerRef.current);
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    },
+    [],
+  );
 
   return (
     <div
@@ -708,8 +719,6 @@ function SessionRow({
         "px-2 py-1.5 rounded-md flex items-center gap-2 group",
         isActive ? "bg-accent" : "hover:bg-accent/40 transition-colors",
       )}
-      onMouseEnter={() => { cancelClose(); setMenuOpen(true); }}
-      onMouseLeave={scheduleClose}
     >
       <button
         onClick={onSelect}
@@ -725,12 +734,19 @@ function SessionRow({
         <DropdownMenuTrigger asChild>
           <button
             className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
+            onMouseEnter={scheduleOpen}
+            onMouseLeave={scheduleClose}
           >
             <DotsThreeVertical className="h-4 w-4" weight="bold" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuContent
+          align="end"
+          className="w-44"
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleClose}
+        >
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
               <Folder className="h-4 w-4" weight="duotone" />
