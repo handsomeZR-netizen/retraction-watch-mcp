@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  CaretDown,
+  CaretUp,
   CalendarBlank,
   CheckCircle,
   ChartBar,
@@ -15,11 +17,20 @@ import {
   XCircle,
   type Icon as PIcon,
 } from "@phosphor-icons/react";
+import {
+  type ColumnDef,
+  type SortingState,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageTitle } from "@/components/ui/typography";
 import { cn } from "@/lib/utils";
 
 interface Item {
@@ -126,15 +137,144 @@ export default function AnalyticsPage() {
 
   const totalPages = data ? Math.ceil(data.total / limit) : 0;
 
+  const [sorting, setSorting] = useState<SortingState>([]);
+
+  const columns = useMemo<ColumnDef<Item>[]>(
+    () => [
+      {
+        accessorKey: "createdAt",
+        header: "时间",
+        cell: ({ getValue }) => (
+          <span className="font-mono text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+            {new Date(getValue<string>()).toLocaleString()}
+          </span>
+        ),
+        sortingFn: "datetime",
+      },
+      {
+        accessorFn: (row) => row.userLabel ?? "-",
+        id: "user",
+        header: "用户",
+        cell: ({ row }) => (
+          <div className="text-xs">
+            <div
+              className="font-medium truncate max-w-[140px]"
+              title={row.original.userLabel ?? "-"}
+            >
+              {row.original.userLabel ?? "-"}
+            </div>
+            <div className="small-caps text-[10px] text-muted-foreground">
+              {row.original.scope}
+            </div>
+          </div>
+        ),
+      },
+      {
+        accessorFn: (row) => row.title ?? row.fileName,
+        id: "title",
+        header: "文件 / 标题",
+        cell: ({ row }) => (
+          <div className="max-w-[280px]">
+            <Link
+              href={`/result/${row.original.id}`}
+              className="font-serif text-[0.95rem] font-medium hover:underline truncate block leading-snug"
+              title={row.original.title ?? row.original.fileName}
+            >
+              {row.original.title ?? row.original.fileName}
+            </Link>
+            <div className="text-[10px] text-muted-foreground font-mono truncate">
+              {row.original.fileName}
+            </div>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "verdict",
+        header: "verdict",
+        cell: ({ getValue }) => <VerdictBadge v={getValue<Item["verdict"]>()} />,
+      },
+      {
+        accessorKey: "refsTotal",
+        header: () => <span className="block text-right">引用</span>,
+        cell: ({ getValue }) => (
+          <div className="text-right tabular-nums text-xs">
+            {getValue<number>()}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "refsHit",
+        header: () => <span className="block text-right">命中</span>,
+        cell: ({ getValue }) => {
+          const n = getValue<number>();
+          return (
+            <div
+              className={cn(
+                "text-right tabular-nums text-xs",
+                n > 0 && "text-warning font-semibold",
+              )}
+            >
+              {n}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "authorsHit",
+        header: () => <span className="block text-right">作者命中</span>,
+        cell: ({ getValue }) => {
+          const n = getValue<number>();
+          return (
+            <div
+              className={cn(
+                "text-right tabular-nums text-xs",
+                n > 0 && "text-destructive font-semibold",
+              )}
+            >
+              {n}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "affiliations",
+        header: "单位",
+        enableSorting: false,
+        cell: ({ getValue }) => {
+          const list = getValue<string[]>();
+          return (
+            <div className="text-xs text-muted-foreground max-w-[200px]">
+              <span className="truncate block" title={list.join(" / ")}>
+                {list.slice(0, 2).join(", ")}
+                {list.length > 2 && " …"}
+              </span>
+            </div>
+          );
+        },
+      },
+    ],
+    [],
+  );
+
+  const table = useReactTable({
+    data: data?.items ?? [],
+    columns,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    manualPagination: true,
+  });
+
   return (
     <div className="space-y-6">
       <header className="flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="flex items-center gap-2 text-3xl font-semibold tracking-tight">
-            <ChartBar className="h-7 w-7" weight="duotone" />
+          <PageTitle className="flex items-center gap-3">
+            <ChartBar className="h-7 w-7 text-primary" weight="duotone" />
             解析日志分析
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          </PageTitle>
+          <p className="font-serif text-[0.95rem] text-muted-foreground mt-2 leading-relaxed">
             全局所有用户的稿件解析记录，可过滤导出做后续分析。
           </p>
         </div>
@@ -176,6 +316,8 @@ export default function AnalyticsPage() {
         <div className="relative w-72">
           <MagnifyingGlass className="h-3.5 w-3.5 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
           <Input
+            id="admin-analytics-search"
+            name="adminAnalyticsSearch"
             type="search"
             value={search}
             onChange={(e) => {
@@ -207,6 +349,8 @@ export default function AnalyticsPage() {
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <CalendarBlank className="h-3.5 w-3.5" weight="duotone" />
           <Input
+            id="admin-analytics-from"
+            name="adminAnalyticsFrom"
             type="date"
             value={from}
             onChange={(e) => {
@@ -217,6 +361,8 @@ export default function AnalyticsPage() {
           />
           <span>→</span>
           <Input
+            id="admin-analytics-to"
+            name="adminAnalyticsTo"
             type="date"
             value={to}
             onChange={(e) => {
@@ -237,84 +383,71 @@ export default function AnalyticsPage() {
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-xs text-muted-foreground uppercase tracking-wider">
-              <tr>
-                <th className="text-left px-4 py-2 font-medium">时间</th>
-                <th className="text-left px-4 py-2 font-medium">用户</th>
-                <th className="text-left px-4 py-2 font-medium">文件 / 标题</th>
-                <th className="text-left px-4 py-2 font-medium">verdict</th>
-                <th className="text-right px-4 py-2 font-medium">引用</th>
-                <th className="text-right px-4 py-2 font-medium">命中</th>
-                <th className="text-right px-4 py-2 font-medium">作者命中</th>
-                <th className="text-left px-4 py-2 font-medium">单位</th>
-              </tr>
+            <thead className="bg-muted/40 border-b border-border">
+              {table.getHeaderGroups().map((hg) => (
+                <tr key={hg.id}>
+                  {hg.headers.map((header) => {
+                    const canSort = header.column.getCanSort();
+                    const sortDir = header.column.getIsSorted();
+                    return (
+                      <th
+                        key={header.id}
+                        className={cn(
+                          "small-caps text-[11px] font-semibold text-muted-foreground px-4 py-2.5 text-left",
+                          canSort && "cursor-pointer select-none hover:text-foreground",
+                        )}
+                        onClick={
+                          canSort
+                            ? header.column.getToggleSortingHandler()
+                            : undefined
+                        }
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {flexRender(
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )}
+                          {sortDir === "asc" && (
+                            <CaretUp className="h-3 w-3" weight="bold" />
+                          )}
+                          {sortDir === "desc" && (
+                            <CaretDown className="h-3 w-3" weight="bold" />
+                          )}
+                        </span>
+                      </th>
+                    );
+                  })}
+                </tr>
+              ))}
             </thead>
             <tbody className="divide-y divide-border">
               {loading && !data && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12">
+                  <td colSpan={columns.length} className="px-4 py-12">
                     <Skeleton className="h-12 w-full" />
                   </td>
                 </tr>
               )}
               {data && data.items.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
+                  <td
+                    colSpan={columns.length}
+                    className="font-serif px-4 py-12 text-center text-muted-foreground"
+                  >
                     没有匹配的记录
                   </td>
                 </tr>
               )}
-              {data?.items.map((it) => (
-                <tr key={it.id} className="hover:bg-accent/30 transition-colors">
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap font-mono">
-                    {new Date(it.createdAt).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs">
-                    <div className="font-medium truncate max-w-[140px]" title={it.userLabel ?? "-"}>
-                      {it.userLabel ?? "-"}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground uppercase">{it.scope}</div>
-                  </td>
-                  <td className="px-4 py-2.5 max-w-[280px]">
-                    <Link
-                      href={`/result/${it.id}`}
-                      className="text-sm font-medium hover:underline truncate block"
-                      title={it.title ?? it.fileName}
-                    >
-                      {it.title ?? it.fileName}
-                    </Link>
-                    <div className="text-[10px] text-muted-foreground font-mono truncate">
-                      {it.fileName}
-                    </div>
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <VerdictBadge v={it.verdict} />
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-xs">
-                    {it.refsTotal}
-                  </td>
-                  <td
-                    className={cn(
-                      "px-4 py-2.5 text-right tabular-nums text-xs",
-                      it.refsHit > 0 && "text-warning font-semibold",
-                    )}
-                  >
-                    {it.refsHit}
-                  </td>
-                  <td
-                    className={cn(
-                      "px-4 py-2.5 text-right tabular-nums text-xs",
-                      it.authorsHit > 0 && "text-destructive font-semibold",
-                    )}
-                  >
-                    {it.authorsHit}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground max-w-[200px]">
-                    <span className="truncate block" title={it.affiliations.join(" / ")}>
-                      {it.affiliations.slice(0, 2).join(", ")}
-                      {it.affiliations.length > 2 && " …"}
-                    </span>
-                  </td>
+              {table.getRowModel().rows.map((row) => (
+                <tr
+                  key={row.id}
+                  className="hover:bg-accent/30 transition-colors"
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <td key={cell.id} className="px-4 py-2.5 align-middle">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
@@ -377,10 +510,15 @@ function StatCard({
         <Icon className={cn("h-5 w-5", cls)} weight="duotone" />
       </span>
       <div>
-        <div className={cn("text-2xl font-semibold tabular-nums leading-tight", cls)}>
+        <div
+          className={cn(
+            "font-serif text-3xl font-semibold tabular-nums leading-none",
+            cls,
+          )}
+        >
           {value ?? "—"}
         </div>
-        <div className="text-[11px] text-muted-foreground uppercase tracking-wider mt-0.5">
+        <div className="small-caps text-[11px] text-muted-foreground mt-1.5">
           {label}
         </div>
       </div>

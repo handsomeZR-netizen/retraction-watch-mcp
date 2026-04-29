@@ -20,7 +20,7 @@ const BULLET_LINE_RE = /^[•◦▪●○■□–—\-*]\s/;
 // Lines that are obviously license / permission / copyright noise — these
 // often pile up at the top of conference-style PDFs as a 5-10 line preamble.
 const NOISE_LINE_RE =
-  /(permission to make digital|to copy otherwise|all rights reserved|copyright\s+©|©\s*\d{4}|hereby grants?|under (?:a )?creative commons|conference[' ]s?\s+author|licensed under|preprint|under review|in press)/i;
+  /(permission to make digital|to copy otherwise|all rights reserved|copyright\s+©|©\s*\d{4}|hereby grants?|under (?:a )?creative commons|conference[' ]s?\s+author|licensed under|preprint|under review|in press|corresponding author|e-mail address|email address|creative\s*commons\.org\/licenses|creativecommons\.org\/licenses|since january 2020 elsevier has created|covid-19 resource centre|free information in english|novel coronavirus covid-19|elsevier connect|public news and information|covid-19-related|research content|immediately available in pubmed central|publicly funded repositories|who covid database|unrestricted research re-use|acknowledg(?:e)?ment of the original source|granted for free by elsevier|remains active|^\s*science\s*direct\s*$|^\s*sciencedirect\s*$|sciencedirect\s*available online|available online at www\.sciencedirect\.com|www\.elsevier\.com\/locate|peer-review under responsibility|open access article under|published by elsevier|procedia computer science|^\s*procedia\s*$|^\s*10\.\d{4,9}\/|^\s*\d{4}-\d{3,4}|\bscientific meeting\b|\b(?:international|national|annual|world|global|ieee|acm|ifac|european|asian|american)\s+(?:conference|congress|symposium|workshop|forum|meeting|summit|seminar)\b|^\s*(?:(?:the\s+)?\d+\s*(?:st|nd|rd|th)?\s+)?(?:conference|congress|symposium|workshop|forum|meeting|summit|seminar)\b|^\s*(?:the\s+)?\d+\s*(?:st|nd|rd|th)?\s+.*\b(?:conference|meeting)\b|^\s*\([A-Z][A-Z0-9\- ]+\s+20\d{2}\)\s*$|^\s*(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:\s*[–-]\s*\d{1,2})?,?\s+\d{4}\b|^\s*on\s+.+(?:information systems|technologies)\s+20\d{2}\s*$|^\s*(?:and\s+)?(?:information systems and technologies|health and social care information systems and technologies|social care information systems and technologies|computational intelligence|intelligence|engineering|technologies)\s+20\d{2}\s*$|^\s*(?:data engineering|quantitative management|(?:intelligent\s+)?information\s*&\s*engineering systems\s*\(kes\s+20\d{2}\)|systems\s*\(kes\s+20\d{2}\)|technologies and application|systems and applications[\"”]?|and applications|sciences innovation|information systems|scientific meeting[\"”]?)\s*$)/i;
 
 export interface PreambleStripResult {
   /** Lines with the preamble removed; original lines if no preamble detected. */
@@ -55,6 +55,13 @@ export function stripPreambleSentinels(lines: string[]): PreambleStripResult {
     }
   }
   if (preambleStart < 0) {
+    return { lines: workingLines, stripped: noiseStripped };
+  }
+  // Some Elsevier final PDFs put the real title at the very top and a
+  // "Graphical Abstract" section later on the first page. In that shape the
+  // section header is not a preamble, so preserve the already-seen title page.
+  const earlierTitle = findNextTitleResume(workingLines, 0);
+  if (earlierTitle >= 0 && earlierTitle < preambleStart) {
     return { lines: workingLines, stripped: noiseStripped };
   }
   // Re-bind for the existing Highlights logic below.

@@ -14,6 +14,15 @@ export async function GET(req: Request) {
   const userId = url.searchParams.get("userId");
   const items = listAuditLog({ limit, action, userId });
   return NextResponse.json({
-    items: items.map(({ ipHash, ...item }) => item),
+    items: items.map((item) => ({
+      id: item.id,
+      userId: item.userId,
+      username: item.username,
+      action: item.action,
+      detail: item.detail,
+      ip: item.ip,
+      userAgent: item.userAgent,
+      createdAt: item.createdAt,
+    })),
   });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -59,7 +59,7 @@ export default function WorkspaceDetailPage() {
   const [name, setName] = useState("");
   const [origin, setOrigin] = useState("");
 
-  async function load(signal?: AbortSignal) {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setData(null);
     setInvites([]);
     try {
@@ -79,19 +79,19 @@ export default function WorkspaceDetailPage() {
         if (signal?.aborted) return;
         if (inv.ok) setInvites(((await inv.json()) as { invites: Invite[] }).invites);
       }
-    } catch (err) {
+    } catch {
       if (signal?.aborted) return;
       toast.error("加载失败");
       router.push("/workspaces");
     }
-  }
+  }, [id, router]);
 
   useEffect(() => {
     const controller = new AbortController();
     setOrigin(window.location.origin);
     void load(controller.signal);
     return () => controller.abort();
-  }, [id]);
+  }, [load]);
 
   if (!data) return <Skeleton className="h-64 w-full" />;
   const ws = data.workspace;

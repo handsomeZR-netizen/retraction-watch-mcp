@@ -176,16 +176,7 @@ export function regexStructure(refs: RawReference[]): {
     const doi = extractDoi(ref.raw);
     const pmid = extractPmid(ref.raw);
     if (doi || pmid) {
-      structured.push({
-        raw: ref.raw,
-        title: heuristicTitle(ref.raw),
-        authors: heuristicAuthors(ref.raw),
-        year: extractYear(ref.raw),
-        doi,
-        pmid,
-        journal: heuristicJournal(ref.raw),
-        source: doi ? "regex_doi" : "regex_pmid",
-      });
+      structured.push(structureReferenceHeuristic(ref, doi ? "regex_doi" : "regex_pmid"));
     } else {
       unresolved.push(ref);
     }
@@ -193,13 +184,37 @@ export function regexStructure(refs: RawReference[]): {
   return { structured, unresolved };
 }
 
+export function heuristicStructureReferences(refs: RawReference[]): StructuredReference[] {
+  return refs.map((ref) => structureReferenceHeuristic(ref, "regex_text"));
+}
+
+function structureReferenceHeuristic(
+  ref: RawReference,
+  source: "regex_doi" | "regex_pmid" | "regex_text",
+): StructuredReference {
+  return {
+    raw: ref.raw,
+    title: heuristicTitle(ref.raw),
+    authors: heuristicAuthors(ref.raw),
+    year: extractYear(ref.raw),
+    doi: extractDoi(ref.raw),
+    pmid: extractPmid(ref.raw),
+    journal: heuristicJournal(ref.raw),
+    source,
+  };
+}
+
 function heuristicTitle(text: string): string | null {
   const yearMatch = text.match(YEAR_REGEX);
   let after = text;
   if (yearMatch && yearMatch.index !== undefined) {
-    after = text.slice(yearMatch.index + yearMatch[0].length);
+    let offset = yearMatch.index + yearMatch[0].length;
+    if (/^[a-z](?=[)\]\.,:;])/i.test(text.slice(offset))) {
+      offset += 1;
+    }
+    after = text.slice(offset);
   }
-  after = after.replace(/^[\s\)\.,]+/, "");
+  after = after.replace(/^[\s\)\]\.,:;]+/, "");
   const firstChunk = after.split(/[\.\?]\s+(?=[A-Z一-鿿])/)[0] ?? after;
   const cleaned = firstChunk.replace(/\s+/g, " ").trim();
   if (!cleaned) return null;
@@ -212,7 +227,7 @@ function heuristicAuthors(text: string): string[] {
   if (yearMatch && yearMatch.index !== undefined) {
     head = text.slice(0, yearMatch.index);
   }
-  head = head.replace(/^\s*\[\d+\]\s*/, "").trim();
+  head = head.replace(/^\s*\[\d+\]\s*/, "").replace(/[\s(\[]+$/, "").trim();
   if (!head) return [];
   const parts = head
     .split(/,\s+|;\s+|\band\s+|&\s+/i)

@@ -17,7 +17,11 @@ import { extractDocx } from "./docx.js";
 import { extractLatex } from "./latex.js";
 import { extractPdf } from "./pdf.js";
 import { extractHeaderMetadata } from "./metadata/index.js";
-import { locateAndSplitReferences, regexStructure } from "./refs.js";
+import {
+  heuristicStructureReferences,
+  locateAndSplitReferences,
+  regexStructure,
+} from "./refs.js";
 import { DeepseekLlmClient, type LlmConfig } from "./llm-client.js";
 import { ocrFallback } from "./ocr.js";
 import type {
@@ -130,11 +134,15 @@ export async function screenManuscript(
   if (llmClient && unresolved.length > 0) {
     llmStructured = await llmClient.structureReferences(unresolved);
   }
+  const heuristicStructured = llmClient
+    ? []
+    : heuristicStructureReferences(unresolved);
 
   const allStructured: StructuredReference[] = dedupeStructuredRefs([
     ...bibReferences,
     ...regexStructured,
     ...llmStructured,
+    ...heuristicStructured,
   ]);
 
   progress({
@@ -143,6 +151,7 @@ export async function screenManuscript(
     detail: {
       llmCalls: llmClient?.stats.refsCalls ?? 0,
       regexHits: regexStructured.length,
+      heuristicHits: heuristicStructured.length,
       llmHits: llmStructured.length,
       bibHits: bibReferences.length,
     },

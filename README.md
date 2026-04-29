@@ -141,7 +141,7 @@ Plug RW Screen into Claude Desktop / Cursor / Claude Code via stdio:
 }
 ```
 
-Tools exposed: `screen_person`, `screen_doi`, `screen_pmid`, `db_health`. Same engine as the CLI — same evidence schema, same policies.
+Tools exposed: `screen_person`, `screen_batch`, `lookup_record`, `lookup_doi`, `explain_match`, `get_source_versions`. Same engine as the CLI — same evidence schema, same policies.
 
 ---
 

@@ -11,7 +11,10 @@ export async function POST(req: Request) {
   if ("response" in auth) return auth.response;
 
   const limited = rateLimit(`parse-start:${auth.user.id}`, {
-    limit: 30,
+    // Keep this in line with /api/upload's bulk-review allowance. A single
+    // 100-PDF test corpus should not upload successfully and then fail at
+    // parse-start solely because this endpoint has a lower cap.
+    limit: 120,
     windowMs: 60 * 60_000,
   });
   if (!limited.allowed) {

@@ -225,8 +225,9 @@ journalctl -u rw-screen --since "1h ago" # recent
 ```
 
 The audit log lives in the app SQLite DB; admins see it under `/admin`.
-IPs are stored as 16-char salted SHA-256, not raw addresses. Rows older
-than 90 days are pruned by the hourly cleanup task.
+IPs are stored as 16-char salted SHA-256, not raw addresses. Audit rows are
+append-only in the application; archive or prune them externally if your
+deployment requires a retention policy.
 
 ---
 

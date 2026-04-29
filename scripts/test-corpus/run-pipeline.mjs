@@ -21,6 +21,7 @@ const ROOT = path.resolve(HERE, "..", "..");
 const BASE = process.env.RW_BASE ?? "http://localhost:3210";
 const USER = process.env.RW_USER ?? "admin";
 const PASS = process.env.RW_PASS ?? "devpw1234";
+const USER_POOL = process.env.RW_USER_POOL ?? "";
 
 function parseArgs() {
   const args = { concurrency: 2, manifest: "test-corpus/manifest.json", parsed: "test-corpus/parsed" };
@@ -34,11 +35,34 @@ function parseArgs() {
   return args;
 }
 
-async function login() {
+function parseUserPool() {
+  const raw = USER_POOL.trim();
+  if (!raw) return [{ username: USER, password: PASS }];
+  const users = raw.split(",").map((part) => {
+    const [username, ...passwordParts] = part.split(":");
+    const password = passwordParts.join(":");
+    if (!username || !password) throw new Error(`invalid RW_USER_POOL entry: ${part}`);
+    return { username, password };
+  });
+  if (users.length === 0) throw new Error("RW_USER_POOL did not contain any users");
+  return users;
+}
+
+function entryId(entry) {
+  return entry.id ?? entry.doi ?? entry.pmcid ?? entry.arxivId ?? null;
+}
+
+function slugForEntry(entry) {
+  const id = entryId(entry);
+  if (!id) throw new Error(`manifest entry is missing id/doi: ${JSON.stringify(entry).slice(0, 200)}`);
+  return id.replace(/[^A-Za-z0-9]/g, "_");
+}
+
+async function login(username = USER, password = PASS) {
   const res = await fetch(`${BASE}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Origin: BASE },
-    body: JSON.stringify({ username: USER, password: PASS }),
+    body: JSON.stringify({ username, password }),
   });
   if (!res.ok) throw new Error(`login ${res.status}: ${await res.text()}`);
   const setCookie = res.headers.get("set-cookie") ?? "";
@@ -72,34 +96,42 @@ async function uploadAndParse(cookie, pdfPath) {
   });
   if (!up.ok) throw new Error(`upload ${up.status}: ${await up.text()}`);
   const { manuscriptId } = await up.json();
+  let lastPollError = null;
 
-  const start = await fetch(`${BASE}/api/parse/start`, {
+  const start = await fetchWithRetry(async () => fetch(`${BASE}/api/parse/start`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Cookie: cookie, Origin: BASE },
     body: JSON.stringify({ manuscriptId }),
-  });
+  }), 3);
   if (!start.ok) throw new Error(`parse-start ${start.status}: ${await start.text()}`);
 
   // Poll. The list endpoint gives us status + verdict + totals.
   for (let i = 0; i < 180; i++) {
     await new Promise((r) => setTimeout(r, 2000));
-    const list = await fetch(`${BASE}/api/manuscripts?limit=200`, {
-      headers: { Cookie: cookie },
-    });
-    if (!list.ok) continue;
-    const j = await list.json();
-    const m = (j.items ?? []).find((it) => it.id === manuscriptId);
-    if (m && (m.status === "done" || m.status === "error")) return { manuscriptId, status: m.status, verdict: m.verdict, error: m.error, totals: m.totals };
+    try {
+      const list = await fetchWithRetry(async () => fetch(`${BASE}/api/manuscripts?limit=200`, {
+        headers: { Cookie: cookie },
+      }), 2);
+      if (!list.ok) {
+        lastPollError = `list ${list.status}: ${await list.text()}`;
+        continue;
+      }
+      const j = await list.json();
+      const m = (j.items ?? []).find((it) => it.id === manuscriptId);
+      if (m && (m.status === "done" || m.status === "error")) return { manuscriptId, status: m.status, verdict: m.verdict, error: m.error, totals: m.totals };
+    } catch (err) {
+      lastPollError = err instanceof Error ? err.message : String(err);
+    }
   }
-  return { manuscriptId, status: "timeout", verdict: null };
+  return { manuscriptId, status: "timeout", verdict: null, error: lastPollError };
 }
 
 async function fetchFullResult(cookie, manuscriptId) {
   // The result page is server-rendered, so we get its data via the JSON
   // export endpoint instead of scraping HTML.
-  const res = await fetch(`${BASE}/api/report/${manuscriptId}?format=download`, {
+  const res = await fetchWithRetry(async () => fetch(`${BASE}/api/report/${manuscriptId}?format=download`, {
     headers: { Cookie: cookie },
-  });
+  }));
   if (!res.ok) return null;
   return res.json();
 }
@@ -138,32 +170,41 @@ async function main() {
   // Skip those already parsed (idempotent re-runs)
   const todo = [];
   for (const e of manifest) {
-    const slug = e.id.replace(/[^A-Za-z0-9]/g, "_");
+    const slug = slugForEntry(e);
     const out = path.join(parsedDir, `${e.layout}_${slug}.json`);
-    try { await fs.access(out); continue; } catch {}
-    todo.push({ ...e, parsedPath: out });
+    try {
+      const parsed = JSON.parse(await fs.readFile(out, "utf8"));
+      if (parsed.status === "done") continue;
+    } catch {}
+    todo.push({ ...e, parsedPath: out, __todoIndex: todo.length });
   }
   process.stdout.write(`Already parsed: ${manifest.length - todo.length}, to do: ${todo.length}\n`);
 
-  const cookie = await login();
-  process.stdout.write(`Logged in.\n`);
+  const users = parseUserPool();
+  const sessions = [];
+  for (const user of users) {
+    sessions.push({ ...user, cookie: await login(user.username, user.password) });
+  }
+  process.stdout.write(`Logged in ${sessions.length} user${sessions.length === 1 ? "" : "s"}.\n`);
 
   const t0 = Date.now();
   const results = await pool(todo, args.concurrency, async (entry) => {
     const t1 = Date.now();
     const pdfAbs = path.resolve(ROOT, entry.pdfPath);
-    process.stdout.write(`[start ${entry.id}]\n`);
+    const id = entryId(entry);
+    const session = sessions[entry.__todoIndex % sessions.length];
+    process.stdout.write(`[start ${id}]\n`);
     let head = null;
     let report = null;
     let pipelineError = null;
     try {
-      head = await uploadAndParse(cookie, pdfAbs);
-      if (head.status === "done") report = await fetchFullResult(cookie, head.manuscriptId);
+      head = await uploadAndParse(session.cookie, pdfAbs);
+      if (head.status === "done") report = await fetchFullResult(session.cookie, head.manuscriptId);
     } catch (err) {
       pipelineError = err.message;
     }
     const summary = {
-      id: entry.id,
+      id,
       layout: entry.layout,
       title: entry.title,
       manuscriptId: head?.manuscriptId ?? null,
@@ -175,7 +216,7 @@ async function main() {
       elapsedMs: Date.now() - t1,
     };
     await fs.writeFile(entry.parsedPath, JSON.stringify(summary, null, 2));
-    process.stdout.write(`  ${summary.status} ${entry.id} verdict=${summary.verdict ?? "-"} ${pipelineError ? "ERR=" + pipelineError : ""} (${(summary.elapsedMs / 1000).toFixed(1)}s)\n`);
+    process.stdout.write(`  ${summary.status} ${id} verdict=${summary.verdict ?? "-"} ${pipelineError ? "ERR=" + pipelineError : ""} (${(summary.elapsedMs / 1000).toFixed(1)}s)\n`);
     return summary;
   });
 

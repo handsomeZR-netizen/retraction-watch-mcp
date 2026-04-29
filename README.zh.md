@@ -141,7 +141,7 @@ npm run doctor -- --json        # 机器可读
 }
 ```
 
-提供的工具：`screen_person`、`screen_doi`、`screen_pmid`、`db_health`。与 CLI 共用同一引擎、同一证据 schema、同一策略集。
+提供的工具：`screen_person`、`screen_batch`、`lookup_record`、`lookup_doi`、`explain_match`、`get_source_versions`。与 CLI 共用同一引擎、同一证据 schema、同一策略集。
 
 ---
 

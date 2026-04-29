@@ -35,5 +35,10 @@ export async function GET() {
   const archivedItems = listManuscriptsForScope(scope, { limit: 30, offset: 0, archived: true }).map(toItem);
   const projects = listProjectsForScope(scope);
 
-  return NextResponse.json({ items, archivedItems, projects });
+  return NextResponse.json({
+    user: { role: auth.user.role },
+    items,
+    archivedItems,
+    projects,
+  });
 }

@@ -6,7 +6,7 @@
 import { AFFILIATION_RE } from "./affiliations.js";
 
 export const TITLE_NOISE_RE =
-  /(permission|attribution|copyright|all rights reserved|license|hereby grants|©|arxiv:|preprint|under review|in press|reuse guidelines|sagepub\.com|^doi:)/i;
+  /(permission|attribution|copyright|all rights reserved|license|hereby grants|©|arxiv:|preprint|under review|in press|reuse guidelines|sagepub\.com|^doi:|\b10\.\d{4,9}\/|corresponding author|e-mail address|email address|scientific meeting|since january 2020 elsevier|covid-19 resource centre|science\s*direct|sciencedirect|available online at|elsevier\.com\/locate|procedia computer science|peer-review under responsibility|open access article under)/i;
 
 // Article-class banners that frequently appear above the real title in
 // journal templates: "Research Article", "Methods Article", "Brief
@@ -30,6 +30,24 @@ const TITLE_JOURNAL_BANNER_RE =
 // / "pp. 1–12". Match a few common patterns.
 const TITLE_VOLUME_ISSUE_RE =
   /^\s*(?:\d{4}[,.]?\s*)?(?:Vol(?:\.|ume)?\s*\d|No\.?\s*\d|Issue\s*\d|pp?\.\s*\d|\d+\s*\(\s*\d+\s*\)\s*[\d,\s–\-]+)/i;
+
+const TITLE_CONFERENCE_BANNER_RE =
+  /^\s*(?:(?:the\s+)?\d+\s*(?:st|nd|rd|th)?\s+)?(?:international|national|annual|world|global|ieee|acm|ifac|european|asian|american)?\s*(?:conference|congress|symposium|workshop|forum|meeting|summit|seminar)\b/i;
+
+const TITLE_ORDINAL_EVENT_RE =
+  /^\s*(?:the\s+)?\d+\s*(?:st|nd|rd|th)?\s+.*\b(?:conference|meeting)\b/i;
+
+const TITLE_CONFERENCE_NAME_RE =
+  /\b(?:international|national|annual|world|global|ieee|acm|ifac|european|asian|american)\s+(?:conference|congress|symposium|workshop|forum|meeting|summit|seminar)\b/i;
+
+const TITLE_EVENT_ACRONYM_RE =
+  /^\s*\([A-Z][A-Z0-9\- ]+\s+20\d{2}\)\s*$/;
+
+const TITLE_EVENT_DATE_LOCATION_RE =
+  /^\s*(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:\s*[–-]\s*\d{1,2})?,?\s+\d{4}\b/i;
+
+const TITLE_EVENT_FRAGMENT_RE =
+  /^\s*(?:(?:and\s+)?(?:information systems and technologies|health and social care information systems and technologies|social care information systems and technologies|computational intelligence|intelligence|engineering|technologies)\s+20\d{2}|data engineering|quantitative management|(?:intelligent\s+)?information\s*&\s*engineering systems\s*\(kes\s+20\d{2}\)|systems\s*\(kes\s+20\d{2}\)|technologies and application|systems and applications["”]?|and applications|sciences innovation|information systems|scientific meeting["”]?)\s*$/i;
 
 export interface TitleRange {
   title: string;
@@ -146,6 +164,12 @@ export function candidateLooksLikeTitle(line: string): boolean {
   if (TITLE_BANNER_PHRASE_RE.test(line)) return false;
   if (TITLE_JOURNAL_BANNER_RE.test(line)) return false;
   if (TITLE_VOLUME_ISSUE_RE.test(line)) return false;
+  if (TITLE_CONFERENCE_BANNER_RE.test(line)) return false;
+  if (TITLE_ORDINAL_EVENT_RE.test(line)) return false;
+  if (TITLE_CONFERENCE_NAME_RE.test(line)) return false;
+  if (TITLE_EVENT_ACRONYM_RE.test(line)) return false;
+  if (TITLE_EVENT_DATE_LOCATION_RE.test(line)) return false;
+  if (TITLE_EVENT_FRAGMENT_RE.test(line)) return false;
   if (/^abstract$/i.test(line)) return false;
   if (/^doi[: ]/i.test(line)) return false;
   if (/^https?:\/\//i.test(line)) return false;
@@ -181,8 +205,8 @@ export function shouldMergeTitleContinuation(curr: string, next: string): boolea
   if (looksLikeAuthorListLine(next)) return false;
   if (AFFILIATION_RE.test(next) && next.split(/\s+/).length <= 6) return false;
   // Title broken on a function word: "BERT: ... Transformers for" + "Language Understanding".
-  if (/\b(of|for|and|with|to|in|on|via|using|under|over|by)$/i.test(curr)) {
-    return next.length <= 80;
+  if (/\b(of|for|and|with|to|in|on|at|via|using|under|over|by)$/i.test(curr)) {
+    return next.length <= 120;
   }
   // Title-cased + no-terminal-punct case. To avoid merging an author byline
   // ("Actual Research Title" + "Alice Smith"), require BOTH:
@@ -211,7 +235,7 @@ export function shouldMergeTitleContinuation(curr: string, next: string): boolea
   // Cap is 10 after a colon/question (subtitle-style wraps), 8 otherwise.
   // The previous 6 was too tight for legitimate noun-phrase continuations
   // like "Mismatch in Switching Surrogates for Chaotic Dynamics" (7 tokens).
-  const maxNextTokens = (endsWithColon || endsWithQuestion) ? 10 : 8;
+  const maxNextTokens = (endsWithColon || endsWithQuestion) ? 12 : 12;
   // Allow continuation lines that start with a lower-case connector word
   // ("for Chaotic Dynamics", "in Switching Surrogates", "and proposal for…")
   // since those are common 2nd / 3rd line patterns in long wrapped titles.
@@ -220,8 +244,9 @@ export function shouldMergeTitleContinuation(curr: string, next: string): boolea
   // because they're a continuation of a title like "…between greenhouse" +
   // "gas emissions". Allow them through regardless of casing.
   const isShortContinuation = nextTokens.length > 0 && nextTokens.length <= 3;
+  const startsLowercaseContinuation = /^[a-z0-9]/.test(next) && nextTokens.length <= maxNextTokens;
   const nextLooksTitle =
-    (/^[A-Z\p{Lu}]/u.test(next) || startsWithConnector || isShortContinuation) &&
+    (/^[A-Z\p{Lu}]/u.test(next) || startsWithConnector || isShortContinuation || startsLowercaseContinuation) &&
     nextTokens.length <= maxNextTokens;
   const currTokens = curr.split(/\s+/).filter(Boolean).length;
   // Either ≥4 tokens or ≥18 characters with a capitalized first letter.
@@ -246,9 +271,15 @@ export function looksLikeAuthorListLine(line: string): boolean {
   // inside a token. Distinguishes author bylines from titles like "Vitamin
   // B12 deficiency", where the letter before the digit is uppercase.
   const hasDigitFootnote = /\b\w*[a-z]\d+\b/.test(line);
+  const hasSeparatedAffiliationFootnote = /\s+[a-d](?:\s*$|[,;])/u.test(line);
   const hasComma = /,/.test(line);
   const hasAnd = /\s+and\s+[A-Z]/.test(line);
-  if (caps >= 2 && (hasFootnote || hasDigitFootnote || hasComma || hasAnd)) return true;
+  const hasTitleConnector =
+    /[:]/.test(line) ||
+    tokens.some((t) => /^(for|of|in|on|to|by|via|with|under|over|using)$/i.test(t));
+  const digitFootnoteLooksAuthor = hasDigitFootnote && (hasComma || hasAnd || tokens.length <= 5);
+  if (caps >= 2 && (hasFootnote || digitFootnoteLooksAuthor || hasSeparatedAffiliationFootnote || hasComma)) return true;
+  if (hasAnd && !hasTitleConnector && caps >= 4 && tokens.length <= 8) return true;
   if (tokens.length >= 6 && caps === tokens.length && tokens.length % 2 === 0) {
     return true;
   }

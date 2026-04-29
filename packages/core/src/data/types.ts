@@ -186,7 +186,7 @@ export interface ManuscriptReference {
   doi: string | null;
   pmid: string | null;
   journal: string | null;
-  source: "regex_doi" | "regex_pmid" | "llm" | "bibtex";
+  source: "regex_doi" | "regex_pmid" | "regex_text" | "llm" | "bibtex";
 }
 
 export interface ScreenedReference {

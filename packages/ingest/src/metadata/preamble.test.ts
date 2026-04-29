@@ -50,6 +50,52 @@ describe("stripPreambleSentinels", () => {
     expect(result.lines.some((l) => l === "Real Article Title Here")).toBe(true);
   });
 
+  it("does not treat a later Graphical Abstract section as a leading preamble", () => {
+    const lines = [
+      "A brain stem circuit integrating reflexive and anticipatory",
+      "salivation",
+      "Gyujin Park1, Hojoon Lee1,2,3,*",
+      "Northwestern University",
+      "Graphical Abstract",
+      "*Correspondence: hojoon.lee@northwestern.edu.",
+    ];
+    const result = stripPreambleSentinels(lines);
+    expect(result.stripped).toBe(false);
+    expect(result.lines[0]).toBe("A brain stem circuit integrating reflexive and anticipatory");
+  });
+
+  it("strips Elsevier COVID resource centre and ScienceDirect boilerplate", () => {
+    const lines = [
+      "Since January 2020 Elsevier has created a COVID-19 resource centre with",
+      "free information in English and Mandarin on the novel coronavirus COVID-19.",
+      "The COVID-19 resource centre is hosted on Elsevier Connect, the",
+      "company's public news and information website.",
+      "Elsevier hereby grants permission to make all its COVID-19-related",
+      "research that is available on the COVID-19 resource centre - including",
+      "this research content - immediately available in PubMed Central and other",
+      "publicly funded repositories, such as the WHO COVID database with rights",
+      "for unrestricted research re-use and analyses in any form or by any means",
+      "with acknowledgement of the original source. These permissions are",
+      "granted for free by Elsevier for as long as the COVID-19 resource centre",
+      "remains active.",
+      "ScienceDirect",
+      "ScienceDirectAvailable online at www.sciencedirect.comProcedia Computer Science 220",
+      "1877-0509 © 2023 The Authors. Published by Elsevier B.V.",
+      "10.1016/j.procs.2023.03.074",
+      "Available online at www.sciencedirect.com",
+      "Procedia Computer Science 00 (2023) 000-000",
+      "www.elsevier.com/locate/procedia",
+      "The 6th International Conference on Smart Communities",
+      "March 15-17, 2023, Leuven, Belgium",
+      "A Distributed Data Mesh Paradigm for an Event-based Smart Communities",
+      "Monitoring Product",
+    ];
+    const result = stripPreambleSentinels(lines);
+    expect(result.stripped).toBe(true);
+    expect(result.lines[0]).toBe("A Distributed Data Mesh Paradigm for an Event-based Smart Communities");
+    expect(result.lines).not.toContain("Since January 2020 Elsevier has created a COVID-19 resource centre with");
+  });
+
   it("falls back gracefully when nothing follows the preamble header", () => {
     const lines = ["Highlights"];
     const result = stripPreambleSentinels(lines);

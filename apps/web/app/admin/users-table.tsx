@@ -113,12 +113,14 @@ export function AdminUsersTable() {
   return (
     <Card>
       <CardHeader className="gap-4 space-y-0 sm:flex-row sm:items-center sm:justify-between">
-        <CardTitle className="flex items-center gap-2 text-base shrink-0">
-          <User className="h-4 w-4" weight="duotone" />
+        <CardTitle className="font-serif flex items-center gap-2 text-lg shrink-0 tracking-tight">
+          <User className="h-4 w-4 text-primary" weight="duotone" />
           用户列表
         </CardTitle>
         <form onSubmit={submitSearch} className="flex w-full gap-2 sm:max-w-sm">
           <Input
+            id="admin-user-search"
+            name="adminUserSearch"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="搜索用户名、昵称或邮箱"
@@ -148,19 +150,24 @@ export function AdminUsersTable() {
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium truncate">
+                    <span className="font-serif text-[1rem] font-semibold truncate text-foreground">
                       {u.displayName ?? u.username}
                     </span>
                     {u.role === "admin" && (
-                      <Badge variant="success" className="text-[9px]">
+                      <Badge variant="success" className="text-[9px] small-caps">
                         <ShieldStar className="h-2.5 w-2.5" weight="fill" />
                         admin
                       </Badge>
                     )}
-                    {u.disabled && <Badge variant="destructive">已禁用</Badge>}
+                    {u.disabled && (
+                      <Badge variant="destructive" className="small-caps">
+                        已禁用
+                      </Badge>
+                    )}
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                    {u.username} · 注册于 {new Date(u.createdAt).toLocaleDateString()}
+                  <div className="text-xs text-muted-foreground mt-0.5 truncate font-mono tabular-nums">
+                    {u.username} · 注册于{" "}
+                    {new Date(u.createdAt).toLocaleDateString()}
                     {u.lastLoginAt && (
                       <>
                         {" · 最后登录 "}
@@ -170,7 +177,7 @@ export function AdminUsersTable() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-3">
-                  <span className="text-xs text-muted-foreground font-mono">
+                  <span className="text-xs text-muted-foreground font-mono tabular-nums">
                     {u.manuscripts} 份稿件
                   </span>
                   <Button
@@ -190,11 +197,16 @@ export function AdminUsersTable() {
                   >
                     <SignOut className="h-4 w-4" weight="duotone" />
                   </Button>
-                  <Switch
-                    checked={!u.disabled}
-                    onCheckedChange={(v) => void toggleDisable(u, !v)}
-                    aria-label={u.disabled ? "启用账户" : "禁用账户"}
-                  />
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      {u.disabled ? "禁用" : "启用"}
+                    </span>
+                    <Switch
+                      checked={!u.disabled}
+                      onCheckedChange={(v) => void toggleDisable(u, !v)}
+                      aria-label={`${u.username} 账户启用状态`}
+                    />
+                  </div>
                 </div>
               </li>
             ))}
@@ -202,7 +214,7 @@ export function AdminUsersTable() {
         )}
         {users && (
           <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4">
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-muted-foreground tabular-nums font-mono">
               {pageStart}-{pageEnd} / {total}
             </div>
             <div className="flex items-center gap-2">

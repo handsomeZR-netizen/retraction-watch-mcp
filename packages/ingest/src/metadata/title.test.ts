@@ -56,6 +56,76 @@ describe("title extraction", () => {
     expect(candidateLooksLikeTitle("Annals of Mathematics")).toBe(false);
   });
 
+  it("rejects Procedia conference/date banners and extracts the real title", () => {
+    const lines = [
+      "The 6th International Conference on Smart Communities",
+      "March 15-17, 2023, Leuven, Belgium",
+      "A Distributed Data Mesh Paradigm for an Event-based Smart Communities",
+      "Monitoring Product",
+      "Alice Smith, Bob Jones",
+    ];
+    expect(candidateLooksLikeTitle(lines[0])).toBe(false);
+    expect(candidateLooksLikeTitle(lines[1])).toBe(false);
+    expect(extractTitle(lines)).toBe(
+      "A Distributed Data Mesh Paradigm for an Event-based Smart Communities Monitoring Product",
+    );
+  });
+
+  it("rejects Procedia acronym and multi-conference banners", () => {
+    expect(candidateLooksLikeTitle("(IWHICI 2023)")).toBe(false);
+    expect(
+      candidateLooksLikeTitle(
+        "Information Systems / ProjMAN - International Conference on Project MANagement / HCist - International Conference",
+      ),
+    ).toBe(false);
+    expect(candidateLooksLikeTitle("Mar 15-17, 2023, Leuven, Belgium")).toBe(false);
+  });
+
+  it("does not merge a separated affiliation footnote author line into the title", () => {
+    const lines = [
+      "A Distributed Data Mesh Paradigm for an Event-based Smart",
+      "Communities Monitoring Product",
+      "Worapol Alex Pongpech a",
+      "a NIDA, Seri Thai Rd, Bangkok and 10110, Thailand",
+    ];
+    expect(extractTitle(lines)).toBe(
+      "A Distributed Data Mesh Paradigm for an Event-based Smart Communities Monitoring Product",
+    );
+  });
+
+  it("merges long lowercase title continuation lines", () => {
+    const lines = [
+      "Decoding the heterogeneity of human undifferentiated",
+      "spermatogonia reveals RAS-dependent regulation of stem cell",
+      "fate",
+      "Alice Smith, Bob Jones",
+    ];
+    expect(extractTitle(lines)).toBe(
+      "Decoding the heterogeneity of human undifferentiated spermatogonia reveals RAS-dependent regulation of stem cell fate",
+    );
+  });
+
+  it("does not mistake a title continuation with 'and' for an author byline", () => {
+    const lines = [
+      "Prediction and comparison of psychological health during",
+      "COVID-19 among Indian population and Rajyoga meditators",
+      "using machine learning algorithms",
+      "Shobhikaa, Prashant Kumarb, Sushil Chandrac",
+    ];
+    expect(extractTitle(lines)).toBe(
+      "Prediction and comparison of psychological health during COVID-19 among Indian population and Rajyoga meditators using machine learning algorithms",
+    );
+  });
+
+  it("merges long continuations after a trailing preposition", () => {
+    const lines = [
+      "Fibroblast-derived alarmin promotes oral wound healing by",
+      "activating regulatory T cells that relay pro-angiogenic and antiinflammatory responses",
+      "Zhaoxu Chen1, Zikeng Huang1",
+    ];
+    expect(extractTitle(lines)).toContain("activating regulatory T cells");
+  });
+
   it("merges a long colon-separated subtitle continuation (up to ~10 tokens)", () => {
     const lines = [
       "Tradeoffs and synergy between material cycles and greenhouse gas emissions:",

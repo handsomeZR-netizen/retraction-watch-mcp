@@ -90,6 +90,14 @@ describe("parseRawNames", () => {
     expect(names.find((n) => /Haomo/.test(n))).toBeUndefined();
     expect(names.find((n) => /^•/.test(n))).toBeUndefined();
   });
+
+  it("rejects separated footnote address affiliations", () => {
+    const names = parseRawNames([
+      "Worapol Alex Pongpech a",
+      "a NIDA, Seri Thai Rd, Bangkok and 10110, Thailand",
+    ]);
+    expect(names).toEqual(["Worapol Alex Pongpech a"]);
+  });
 });
 
 describe("dedupAuthorWithFootnoteSuffix", () => {
@@ -122,6 +130,18 @@ describe("extractAuthors integration", () => {
     expect(authors[0].affiliation).toMatch(/Beihua University/);
     expect(authors[1].affiliation).toMatch(/Haomo|Beijing/);
     expect(authors[2].affiliation).toMatch(/Beihua University/);
+  });
+
+  it("maps separated lowercase footnote markers to address-style affiliations", () => {
+    const lines = [
+      "A Distributed Data Mesh Paradigm for an Event-based Smart Communities Monitoring Product",
+      "Worapol Alex Pongpech a",
+      "a NIDA, Seri Thai Rd, Bangkok and 10110, Thailand",
+      "Abstract",
+    ];
+    const authors = extractAuthors(lines, lines.join("\n"));
+    expect(authors.map((a) => a.name)).toEqual(["Worapol Alex Pongpech"]);
+    expect(authors[0].affiliation).toMatch(/NIDA/);
   });
 });
 

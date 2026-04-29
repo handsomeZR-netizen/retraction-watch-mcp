@@ -9,6 +9,32 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..", "..");
 
+function parseArgs() {
+  const args = {
+    manifest: "test-corpus/manifest.json",
+    parsed: "test-corpus/parsed",
+    reports: "test-corpus/reports",
+  };
+  const argv = process.argv.slice(2);
+  for (let i = 0; i < argv.length; i++) {
+    const k = argv[i], v = argv[i + 1];
+    if (k === "--manifest") (args.manifest = v, i++);
+    else if (k === "--parsed") (args.parsed = v, i++);
+    else if (k === "--reports") (args.reports = v, i++);
+  }
+  return args;
+}
+
+function entryId(entry) {
+  return entry.id ?? entry.doi ?? entry.pmcid ?? entry.arxivId ?? null;
+}
+
+function slugForEntry(entry) {
+  const id = entryId(entry);
+  if (!id) throw new Error(`manifest entry is missing id/doi: ${JSON.stringify(entry).slice(0, 200)}`);
+  return id.replace(/[^A-Za-z0-9]/g, "_");
+}
+
 function normalize(s) {
   return (s ?? "")
     .toLowerCase()
@@ -93,26 +119,28 @@ function compareReferences(parsed) {
 }
 
 async function main() {
-  const manifestPath = path.resolve(ROOT, "test-corpus/manifest.json");
-  const parsedDir = path.resolve(ROOT, "test-corpus/parsed");
-  const reportsDir = path.resolve(ROOT, "test-corpus/reports");
+  const args = parseArgs();
+  const manifestPath = path.resolve(ROOT, args.manifest);
+  const parsedDir = path.resolve(ROOT, args.parsed);
+  const reportsDir = path.resolve(ROOT, args.reports);
   await fs.mkdir(reportsDir, { recursive: true });
 
   const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
   const diffs = [];
 
   for (const entry of manifest) {
-    const slug = entry.id.replace(/[^A-Za-z0-9]/g, "_");
+    const id = entryId(entry);
+    const slug = slugForEntry(entry);
     const parsedPath = path.join(parsedDir, `${entry.layout}_${slug}.json`);
     let parsed;
     try {
       parsed = JSON.parse(await fs.readFile(parsedPath, "utf8"));
     } catch {
-      diffs.push({ id: entry.id, layout: entry.layout, status: "no-parsed-file" });
+      diffs.push({ id, layout: entry.layout, status: "no-parsed-file" });
       continue;
     }
     if (parsed.status !== "done") {
-      diffs.push({ id: entry.id, layout: entry.layout, status: parsed.status, err: parsed.error });
+      diffs.push({ id, layout: entry.layout, status: parsed.status, err: parsed.error });
       continue;
     }
 
@@ -142,7 +170,7 @@ async function main() {
     if (refCmp.refCount === 0) findings.push({ kind: "no-references-extracted" });
 
     diffs.push({
-      id: entry.id,
+      id,
       layout: entry.layout,
       status: "done",
       verdict: parsed.verdict,
@@ -198,7 +226,7 @@ async function main() {
     md.push("");
   }
   await fs.writeFile(path.join(reportsDir, "summary.md"), md.join("\n"));
-  process.stdout.write(`Wrote diff.json + summary.md to test-corpus/reports/\n`);
+  process.stdout.write(`Wrote diff.json + summary.md to ${args.reports.replace(/\\/g, "/")}/\n`);
 
   // Print top-level summary to stdout
   const allFindings = {};

@@ -87,8 +87,10 @@ export function ReferenceTable({ entries }: { entries: Entry[] }) {
     <Card className="overflow-hidden">
       <div className="px-5 py-4 border-b border-border flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-base font-semibold">参考文献比对</h2>
-          <Badge variant="muted">
+          <h2 className="font-serif text-lg font-semibold tracking-tight">
+            参考文献比对
+          </h2>
+          <Badge variant="muted" className="tabular-nums">
             {filtered.length} / {entries.length}
           </Badge>
         </div>
@@ -96,6 +98,8 @@ export function ReferenceTable({ entries }: { entries: Entry[] }) {
           <div className="relative w-56">
             <MagnifyingGlass className="h-3.5 w-3.5 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
             <Input
+              id="reference-search"
+              name="referenceSearch"
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -163,12 +167,12 @@ export function ReferenceTable({ entries }: { entries: Entry[] }) {
                 aria-expanded={open}
                 className="w-full text-left px-5 py-3.5 flex items-start gap-3 hover:bg-accent/40 transition-colors focus-visible:outline-none focus-visible:bg-accent/40"
               >
-                <span className="text-xs text-muted-foreground w-7 shrink-0 mt-0.5 tabular-nums font-mono">
+                <span className="text-[11px] text-muted-foreground w-7 shrink-0 mt-1 tabular-nums font-mono small-caps">
                   {String(originalIndex + 1).padStart(2, "0")}
                 </span>
                 <VerdictIcon verdict={entry.result.verdict} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium leading-snug line-clamp-2">
+                  <div className="font-serif text-[0.95rem] font-medium leading-snug line-clamp-2 text-foreground">
                     {entry.reference.title || entry.reference.raw.slice(0, 200)}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1 truncate">
@@ -204,22 +208,24 @@ export function ReferenceTable({ entries }: { entries: Entry[] }) {
 
               {open && (
                 <div className="px-5 pb-5 pl-[3.75rem] animate-fade-in-up">
-                  <div className="text-xs text-muted-foreground mb-3 leading-relaxed">
-                    <span className="text-foreground font-medium">原文：</span>
+                  <div className="font-serif text-[0.85rem] text-muted-foreground mb-3 leading-relaxed">
+                    <span className="text-foreground font-medium small-caps mr-1.5 text-[11px]">
+                      原文
+                    </span>
                     {entry.reference.raw}
                   </div>
                   {entry.result.bestCandidate && (
-                    <Card className="p-4 mb-3 bg-accent/30">
+                    <Card className="p-4 mb-3 bg-accent/40 border-primary/15">
                       <div className="flex items-center justify-between gap-2 mb-2">
-                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                        <span className="small-caps text-[11px] text-primary font-semibold">
                           匹配到 RW 记录
                         </span>
-                        <span className="font-mono text-xs text-muted-foreground">
+                        <span className="font-mono text-xs text-muted-foreground tabular-nums">
                           score {entry.result.bestCandidate.score.toFixed(2)} · #
                           {entry.result.bestCandidate.record.recordId}
                         </span>
                       </div>
-                      <div className="text-sm font-medium leading-snug">
+                      <div className="font-serif text-[0.95rem] font-medium leading-snug text-foreground">
                         {entry.result.bestCandidate.record.title}
                       </div>
                       <div className="text-xs text-muted-foreground mt-2 space-y-1">

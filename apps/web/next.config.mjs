@@ -88,6 +88,11 @@ function createNextConfig(phase) {
     env: {
       NEXT_PUBLIC_APP_VERSION: pkg.version,
     },
+    experimental: {
+      serverActions: {
+        bodySizeLimit: "200mb",
+      },
+    },
     outputFileTracingIncludes: {
       "/api/**": ["./node_modules/better-sqlite3/**"],
     },

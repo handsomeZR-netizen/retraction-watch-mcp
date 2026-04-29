@@ -16,9 +16,12 @@ export const AFFILIATION_RE =
 export const CORP_AFFILIATION_RE =
   /\b(Inc\.?|Corp(\.|oration)?|Co\.,?|Ltd\.?|LLC|GmbH|SA|AG|Pty|Pte|Technology|Technologies|Group|Holdings)\b/;
 
-const FOOTNOTE_PREFIX_RE = /^([a-z])(?=[A-Z])/;
+const ADDRESS_AFFILIATION_RE =
+  /\b(Rd\.?|Road|Street|St\.?|Avenue|Ave\.?|Boulevard|Blvd\.?|Lane|Campus|Bangkok|Thailand|China|Japan|Korea|Singapore|USA|United States|United Kingdom|Germany|France|Italy|Spain|Canada|Australia)\b/i;
+
+const FOOTNOTE_PREFIX_RE = /^([a-z])\s*(?=[A-Z])/;
 // Allow up to 4 digits for numeric markers (^1Department, ^12 ...)
-const NUMERIC_PREFIX_RE = /^(\d{1,2})(?=[A-Z])/;
+const NUMERIC_PREFIX_RE = /^(\d{1,2})\s*(?=[A-Z])/;
 
 export interface AffiliationMap {
   byKey: Map<string, string>;
@@ -30,9 +33,13 @@ export function buildAffiliationMap(blockLines: string[]): AffiliationMap {
   const byKey = new Map<string, string>();
   const ordered: string[] = [];
   for (const line of blockLines) {
+    const hasFootnotePrefix = FOOTNOTE_PREFIX_RE.test(line) || NUMERIC_PREFIX_RE.test(line);
     const looksLikeAffiliation =
       AFFILIATION_RE.test(line) ||
-      (FOOTNOTE_PREFIX_RE.test(line) && CORP_AFFILIATION_RE.test(line));
+      (hasFootnotePrefix &&
+        (CORP_AFFILIATION_RE.test(line) ||
+          ADDRESS_AFFILIATION_RE.test(line) ||
+          (line.match(/,/g) ?? []).length >= 2));
     if (!looksLikeAffiliation) continue;
     const letterMatch = line.match(FOOTNOTE_PREFIX_RE);
     const numericMatch = !letterMatch ? line.match(NUMERIC_PREFIX_RE) : null;
@@ -76,6 +83,15 @@ export function stripFootnoteSuffix(name: string): {
     const digits = digitRun[0].match(/\d{1,2}/g) ?? [];
     markers.push(...digits);
     cleaned = cleaned.slice(0, -digitRun[0].length).trim();
+  }
+  const spacedTailLetter = cleaned.match(/^(.+?)\s+([a-d])$/);
+  if (spacedTailLetter) {
+    const candidate = spacedTailLetter[1].trim();
+    const words = candidate.split(/\s+/);
+    if (words.length >= 2 && /^[A-Z]/.test(words.at(-1) ?? "")) {
+      markers.push(spacedTailLetter[2]);
+      cleaned = candidate;
+    }
   }
   // Trailing single footnote letter glued to the surname (only single lowercase)
   // Be conservative: only do this when removing it leaves a name that ends in

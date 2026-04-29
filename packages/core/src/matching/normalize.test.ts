@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  extractDoi,
   hasConflictingFullGivenNames,
   isPublicEmailDomain,
   jaccardSimilarity,
@@ -17,6 +18,12 @@ describe("normalization", () => {
     expect(normalizeDoi("https://doi.org/10.1000/ABC")).toBe("10.1000/abc");
     expect(normalizeDoi("doi: 10.1000/ABC")).toBe("10.1000/abc");
     expect(normalizeDoi("Unavailable")).toBe("");
+  });
+
+  it("preserves valid numeric suffixes in extracted Elsevier DOIs", () => {
+    expect(extractDoi("https://doi.org/10.1016/j.procs.2023.03.074.")).toBe(
+      "10.1016/j.procs.2023.03.074",
+    );
   });
 
   it("builds conservative name signatures", () => {

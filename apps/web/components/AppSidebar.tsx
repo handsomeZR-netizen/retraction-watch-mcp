@@ -85,6 +85,7 @@ export function AppSidebar() {
   const [recentOpen, setRecentOpen] = useState(true);
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [userRole, setUserRole] = useState<"user" | "admin" | null>(null);
   // Pending-delete state drives the ConfirmDeleteDialog. Replaces native
   // window.confirm so the prompt matches the rest of the design system and
   // doesn't get blocked by some browsers' notification settings.
@@ -113,6 +114,7 @@ export function AppSidebar() {
     const res = await fetch("/api/sidebar", { cache: "no-store" });
     if (!res.ok) return;
     const j = await res.json();
+    setUserRole(j.user?.role ?? null);
     setItems(j.items ?? []);
     setProjects(j.projects ?? []);
     setArchivedItems(j.archivedItems ?? []);
@@ -207,6 +209,8 @@ export function AppSidebar() {
     }
   }
 
+  const isAdmin = userRole === "admin";
+
   if (collapsed) {
     return (
       <aside className="hidden md:flex w-14 shrink-0 border-r border-border bg-card flex-col h-screen sticky top-0">
@@ -247,7 +251,9 @@ export function AppSidebar() {
         <div className="p-2 border-t border-border flex flex-col items-center gap-1">
           <CollapsedNavIcon href="/" icon={House} label="首页" pathname={pathname} />
           <CollapsedNavIcon href="/history" icon={ClockCounterClockwise} label="历史" pathname={pathname} />
-          <CollapsedNavIcon href="/admin" icon={ShieldStar} label="管理" pathname={pathname} />
+          {isAdmin && (
+            <CollapsedNavIcon href="/admin" icon={ShieldStar} label="管理" pathname={pathname} />
+          )}
         </div>
       </aside>
     );
@@ -290,6 +296,8 @@ export function AppSidebar() {
         <div className="relative">
           <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
+            id="sidebar-session-search"
+            name="sidebarSessionSearch"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="搜索会话"
@@ -438,7 +446,7 @@ export function AppSidebar() {
       <div className="px-3 py-2 border-t border-border space-y-0.5 shrink-0">
         <NavLink href="/" icon={House} label="首页" pathname={pathname} />
         <NavLink href="/history" icon={ClockCounterClockwise} label="历史" pathname={pathname} />
-        <NavLink href="/admin" icon={ShieldStar} label="管理" pathname={pathname} adminOnly />
+        {isAdmin && <NavLink href="/admin" icon={ShieldStar} label="管理" pathname={pathname} />}
       </div>
       <ConfirmDeleteDialog
         open={pendingDeleteId !== null}
@@ -789,15 +797,12 @@ function NavLink({
   icon: Icon,
   label,
   pathname,
-  adminOnly,
 }: {
   href: string;
   icon: PIcon;
   label: string;
   pathname: string;
-  adminOnly?: boolean;
 }) {
-  void adminOnly;
   const active = pathname === href;
   return (
     <Link

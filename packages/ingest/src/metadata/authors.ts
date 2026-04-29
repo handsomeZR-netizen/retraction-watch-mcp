@@ -204,6 +204,11 @@ function isAffiliationLineNotName(line: string): boolean {
   if (AFFIL_PREFIX_RE.test(line) && AFFILIATION_RE.test(line)) return true;
   // Footnote-prefixed corporate affiliation: "bHaomo.AI Technology Co., Ltd"
   if (AFFIL_PREFIX_RE.test(line) && CORP_SUFFIX_RE.test(line)) return true;
+  if (/^([a-z]|\d{1,2})\s+[A-Z]/.test(line)) {
+    if (AFFILIATION_RE.test(line) || CORP_SUFFIX_RE.test(line)) return true;
+    if (/\b(Rd\.?|Road|Street|St\.?|Avenue|Ave\.?|Bangkok|Thailand|China|Singapore|USA|United States)\b/i.test(line)) return true;
+    if ((line.match(/,/g) ?? []).length >= 2) return true;
+  }
   return false;
 }
 

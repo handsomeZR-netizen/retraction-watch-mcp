@@ -63,7 +63,7 @@ test.beforeAll(async ({ request }) => {
 });
 
 for (const fixture of FIXTURES) {
-  test(`fixture: ${fixture.label}`, async ({ page, request }) => {
+  test(`fixture: ${fixture.label}`, async ({ page }) => {
     // Log in via UI; subsequent fetch through page.context().request reuses
     // the session cookie set by the login response.
     await page.goto("/login");
