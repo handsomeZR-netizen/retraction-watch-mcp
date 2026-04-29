@@ -103,19 +103,23 @@ export function SessionsProvider({ children }: { children: React.ReactNode }) {
   }, [bumpRefreshToken, clearActiveSessions]);
 
   useEffect(() => {
+    // Detect cross-tab workspace switches without burning a request every five
+    // seconds. The previous interval polled /api/account/profile aggressively
+    // (one round-trip per tick × every mounted page), which on a high-RTT
+    // deployment dominated the dashboard's first-paint waterfall. Now we only
+    // refresh on:
+    //   - mount
+    //   - tab focus or visibility change (user returning to the tab)
+    //   - explicit `rw:workspace-switched` event (same-tab UI changes scope)
     void refreshWorkspaceScope();
     const onFocus = () => void refreshWorkspaceScope();
     const onVisibility = () => {
       if (document.visibilityState === "visible") void refreshWorkspaceScope();
     };
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refreshWorkspaceScope();
-    }, 5000);
     window.addEventListener("focus", onFocus);
     window.addEventListener("rw:workspace-switched", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("rw:workspace-switched", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
