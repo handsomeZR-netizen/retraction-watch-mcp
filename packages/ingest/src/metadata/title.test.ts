@@ -48,4 +48,71 @@ describe("title extraction", () => {
     expect(t).toContain("DV-World");
     expect(t).toContain("Real-World Scenarios");
   });
+
+  it("rejects standalone journal-name banners", () => {
+    expect(candidateLooksLikeTitle("International Journal of Architectural Computing")).toBe(false);
+    expect(candidateLooksLikeTitle("Journal of Industrial Ecology")).toBe(false);
+    expect(candidateLooksLikeTitle("Frontiers in Radiology")).toBe(false);
+    expect(candidateLooksLikeTitle("Annals of Mathematics")).toBe(false);
+  });
+
+  it("merges a long colon-separated subtitle continuation (up to ~10 tokens)", () => {
+    const lines = [
+      "Tradeoffs and synergy between material cycles and greenhouse gas emissions:",
+      "Opportunities in a rapidly growing housing stock",
+      "Author One",
+    ];
+    const t = extractTitle(lines);
+    expect(t).toContain("Tradeoffs and synergy");
+    expect(t).toContain("Opportunities");
+    expect(t).toContain("housing stock");
+  });
+
+  it("merges a question-titled paper with its descriptive subtitle", () => {
+    const lines = [
+      "How Fast Should a Model Commit to Supervision?",
+      "Training Reasoning Models on the Tsallis Loss Continuum",
+      "Author One, Author Two",
+    ];
+    const t = extractTitle(lines);
+    expect(t).toContain("Supervision?");
+    expect(t).toContain("Tsallis Loss");
+  });
+
+  it("rejects journal-name banner that spans two PDF lines", () => {
+    const lines = [
+      "Research Article",
+      "International Journal of",
+      "Architectural Computing",
+      "2025, Vol. 23(1) 5–26",
+      "Designing with sense: A critical review",
+      "and proposal for enhanced design",
+      "space exploration in generative",
+      "design",
+    ];
+    const t = extractTitle(lines);
+    expect(t).toContain("Designing with sense");
+  });
+
+  it("merges three-line wrapped titles", () => {
+    const lines = [
+      "Teacher Forcing as Generalized Bayes: Optimization Geometry",
+      "Mismatch in Switching Surrogates",
+      "for Chaotic Dynamics",
+      "Author One",
+    ];
+    const t = extractTitle(lines);
+    expect(t).toContain("Teacher Forcing");
+    expect(t).toContain("Switching Surrogates");
+    expect(t).toContain("Chaotic Dynamics");
+  });
+
+  it("does NOT merge when both lines are independent questions", () => {
+    const lines = [
+      "Are Large Language Models Conscious?",
+      "Do Neural Networks Dream?",
+    ];
+    const t = extractTitle(lines);
+    expect(t).toBe("Are Large Language Models Conscious?");
+  });
 });

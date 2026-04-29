@@ -6,7 +6,7 @@
 import { AFFILIATION_RE } from "./affiliations.js";
 
 export const TITLE_NOISE_RE =
-  /(permission|attribution|copyright|all rights reserved|license|hereby grants|©|arxiv:|preprint|under review|in press)/i;
+  /(permission|attribution|copyright|all rights reserved|license|hereby grants|©|arxiv:|preprint|under review|in press|reuse guidelines|sagepub\.com|^doi:)/i;
 
 // Article-class banners that frequently appear above the real title in
 // journal templates: "Research Article", "Methods Article", "Brief
@@ -17,19 +17,54 @@ export const TITLE_NOISE_RE =
 const TITLE_BANNER_PHRASE_RE =
   /^\s*(?:research|methods?|review|technical|brief|original|short|case|news|editorial|perspective|commentary|letter|rapid|systematic\s+review)\s+(?:article|report|communication|note|paper|method)s?\s*$/i;
 
+// Journal-name banners — short standalone lines like "International Journal
+// of Architectural Computing" or "Frontiers in Radiology" that sit above the
+// real title in some PMC PDFs. Anchored to common journal-name openers; we
+// only reject them when they're standalone short lines (no subtitle / no
+// punctuation), so they can't shadow real titles that quote a journal name.
+const TITLE_JOURNAL_BANNER_RE =
+  /^\s*(?:(?:International|National|Annual|Proceedings\s+of\s+the)\s+)?(?:Journal|Frontiers|Reviews|Letters|Bulletin|Acta|Annals|Archives|Transactions|Studies|Reports)\s+(?:of|in|on)\s+[A-Z][\w\s&,'\-]{3,80}\s*$/;
+
+// Volume / issue / page-range bibliographic lines that some templates print
+// just below the journal banner: "2025, Vol. 23(1) 5–26" / "Vol. 14, No. 3"
+// / "pp. 1–12". Match a few common patterns.
+const TITLE_VOLUME_ISSUE_RE =
+  /^\s*(?:\d{4}[,.]?\s*)?(?:Vol(?:\.|ume)?\s*\d|No\.?\s*\d|Issue\s*\d|pp?\.\s*\d|\d+\s*\(\s*\d+\s*\)\s*[\d,\s–\-]+)/i;
+
 export function extractTitle(lines: string[]): string | null {
   const horizon = Math.min(lines.length, 25);
   for (let i = 0; i < horizon; i += 1) {
     let candidate = lines[i];
     if (!candidateLooksLikeTitle(candidate)) continue;
 
-    const next = lines[i + 1];
-    if (next && shouldMergeTitleContinuation(candidate, next)) {
-      const merged = candidate.endsWith("-")
+    // Reject journal-name banner that's split across two PDF lines —
+    // "International Journal of" + "Architectural Computing" looks innocent
+    // line-by-line but joins into a banner. Check both the previous-line
+    // join and the candidate-on-its-own.
+    if (i > 0) {
+      const prev = (lines[i - 1] ?? "").trim();
+      const joined = `${prev} ${candidate}`.replace(/\s+/g, " ").trim();
+      if (TITLE_JOURNAL_BANNER_RE.test(joined)) continue;
+    }
+    const lookahead = (lines[i + 1] ?? "").trim();
+    if (lookahead) {
+      const joined = `${candidate} ${lookahead}`.replace(/\s+/g, " ").trim();
+      if (TITLE_JOURNAL_BANNER_RE.test(joined)) continue;
+    }
+
+    // Try up to 2 wrap merges. Some titles span 3 PDF lines, e.g.
+    // "Teacher Forcing as Generalized Bayes: Optimization Geometry / Mismatch
+    // in Switching Surrogates / for Chaotic Dynamics".
+    for (let wrap = 0; wrap < 2; wrap += 1) {
+      const next = lines[i + 1 + wrap];
+      if (!next || !shouldMergeTitleContinuation(candidate, next)) break;
+      candidate = candidate.endsWith("-")
         ? candidate.slice(0, -1) + next
         : `${candidate} ${next}`;
-      candidate = merged;
     }
+
+    if (TITLE_BANNER_PHRASE_RE.test(candidate)) continue;
+    if (TITLE_JOURNAL_BANNER_RE.test(candidate)) continue;
 
     if (candidate.length >= 6 && candidate.length <= 250) {
       return candidate;
@@ -42,6 +77,8 @@ export function candidateLooksLikeTitle(line: string): boolean {
   if (line.length < 6 || line.length > 250) return false;
   if (TITLE_NOISE_RE.test(line)) return false;
   if (TITLE_BANNER_PHRASE_RE.test(line)) return false;
+  if (TITLE_JOURNAL_BANNER_RE.test(line)) return false;
+  if (TITLE_VOLUME_ISSUE_RE.test(line)) return false;
   if (/^abstract$/i.test(line)) return false;
   if (/^doi[: ]/i.test(line)) return false;
   if (/^https?:\/\//i.test(line)) return false;
@@ -87,26 +124,61 @@ export function shouldMergeTitleContinuation(curr: string, next: string): boolea
   //   - next is a clear title continuation (≤4 tokens, no person-name shape)
   // This still merges real wraps like "Learnable Graph ODE Networks for
   // Anomaly Detection in CAN-FD" + "Vehicle Networks".
-  const noTerminal = !/[.!?]$/.test(curr);
+  // Sentence-final period or exclamation mark is a real boundary; question
+  // mark is NOT — academic titles routinely use "?" plus a descriptive
+  // subtitle ("How Fast Should a Model Commit to Supervision? Training
+  // Reasoning Models on the Tsallis Loss Continuum"). Only block merging
+  // when next itself looks like a fresh question.
+  const endsWithFinal = /[.!]$/.test(curr);
+  const endsWithQuestion = /\?$/.test(curr);
+  const nextLooksLikeQuestion = /\?$/.test(next);
+  if (endsWithFinal) return false;
+  if (endsWithQuestion && nextLooksLikeQuestion) return false;
+  // After a colon ("…: Opportunities in a rapidly growing housing stock") or
+  // a question ("…Supervision? Training Reasoning Models on the Tsallis Loss
+  // Continuum"), a long descriptive subtitle is the norm — allow up to 10
+  // continuation tokens. Unmarked wraps stay capped at 6 to avoid pulling in
+  // an affiliation line by mistake.
+  const endsWithColon = /:$/.test(curr);
   const nextTokens = next.split(/\s+/).filter(Boolean);
-  // Allow up to 6 continuation tokens — many real titles wrap a noun phrase
-  // like "Agents in Real-World Scenarios" (4–5 tokens) onto the second line.
-  const nextLooksTitle = /^[A-Z\p{Lu}]/u.test(next) && nextTokens.length <= 6;
+  // Cap is 10 after a colon/question (subtitle-style wraps), 8 otherwise.
+  // The previous 6 was too tight for legitimate noun-phrase continuations
+  // like "Mismatch in Switching Surrogates for Chaotic Dynamics" (7 tokens).
+  const maxNextTokens = (endsWithColon || endsWithQuestion) ? 10 : 8;
+  // Allow continuation lines that start with a lower-case connector word
+  // ("for Chaotic Dynamics", "in Switching Surrogates", "and proposal for…")
+  // since those are common 2nd / 3rd line patterns in long wrapped titles.
+  const startsWithConnector = /^(?:for|of|in|on|to|by|via|with|under|over|and|the|using|toward|towards|across|against|from|into|about)\s/i.test(next);
+  // Short noun-phrase continuations (≤3 tokens) commonly start in lowercase
+  // because they're a continuation of a title like "…between greenhouse" +
+  // "gas emissions". Allow them through regardless of casing.
+  const isShortContinuation = nextTokens.length > 0 && nextTokens.length <= 3;
+  const nextLooksTitle =
+    (/^[A-Z\p{Lu}]/u.test(next) || startsWithConnector || isShortContinuation) &&
+    nextTokens.length <= maxNextTokens;
   const currTokens = curr.split(/\s+/).filter(Boolean).length;
   // 4 tokens (was 6) so titles like "DV-World: Benchmarking Data Visualization"
-  // still pick up the wrap. Author bylines are filtered separately by
-  // looksLikeAuthorListLine above, so widening this gate is safe.
-  const currLongTitle = currTokens >= 4 && mostlyCapitalized(curr);
-  return noTerminal && nextLooksTitle && currLongTitle && next.length <= 80;
+  // still pick up the wrap. The previous mostlyCapitalized() guard was too
+  // strict — academic titles like "Tradeoffs and synergy between material
+  // cycles..." are mostly lowercase content words, so we only require the
+  // first character to be capitalized. Author-byline filtering above already
+  // covers the false-positive merge risk.
+  const currLooksLikeTitle = currTokens >= 4 && /^[A-Z\p{Lu}]/u.test(curr);
+  return nextLooksTitle && currLooksLikeTitle && next.length <= 120;
 }
 
 export function looksLikeAuthorListLine(line: string): boolean {
   const tokens = line.split(/\s+/);
   const caps = tokens.filter((t) => /^[A-Z\p{Lu}]/u.test(t)).length;
   const hasFootnote = /[∗*†‡§¶○●]/u.test(line);
+  // Cell / J Ind Ecol style numeric superscripts: "Nolan1", "Morasae2",
+  // "Michael3" — i.e. a lowercase letter immediately followed by a digit
+  // inside a token. Distinguishes author bylines from titles like "Vitamin
+  // B12 deficiency", where the letter before the digit is uppercase.
+  const hasDigitFootnote = /\b\w*[a-z]\d+\b/.test(line);
   const hasComma = /,/.test(line);
   const hasAnd = /\s+and\s+[A-Z]/.test(line);
-  if (caps >= 2 && (hasFootnote || hasComma || hasAnd)) return true;
+  if (caps >= 2 && (hasFootnote || hasDigitFootnote || hasComma || hasAnd)) return true;
   if (tokens.length >= 6 && caps === tokens.length && tokens.length % 2 === 0) {
     return true;
   }

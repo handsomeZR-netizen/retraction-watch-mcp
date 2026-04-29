@@ -98,18 +98,11 @@ async function fetchArxivCandidates(limit) {
   }).filter((c) => c.pdfUrl);
 }
 
-// PMC OA Service: returns XML with real PDF FTP link
-async function fetchPmcOaPdfUrl(pmcid) {
-  const xml = await fetchText(`https://www.ncbi.nlm.nih.gov/pmc/utils/oa/oa.fcgi?id=PMC${pmcid}`);
-  // <link format="pdf" href="ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_pdf/xx/yy/foo.pdf"/>
-  const m = xml.match(/<link[^>]+format="pdf"[^>]+href="([^"]+)"/);
-  if (!m) return null;
-  // FTP URL — convert to HTTPS mirror (NCBI publishes both)
-  return m[1].replace(/^ftp:\/\/ftp\.ncbi\.nlm\.nih\.gov\//, "https://ftp.ncbi.nlm.nih.gov/");
-}
-
 async function fetchPmcCandidates(limit) {
-  // search PMC OA recent
+  // PMC OA Service usually returns oa_package .tar.gz (not the loose PDF).
+  // EuropePMC mirrors PMC and serves PDFs directly via /api/getPdf, which
+  // resolves application/pdf with no auth — much simpler. We still use
+  // NCBI ESearch/ESummary for discovery + metadata.
   const term = encodeURIComponent('open access[filter] AND "2024"[PDAT] NOT "Preprint"[Publication Type]');
   const search = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pmc&term=${term}&retmax=${limit}&retmode=json`;
   const j = await fetchJson(search);
@@ -122,17 +115,14 @@ async function fetchPmcCandidates(limit) {
   for (const pmcid of ids) {
     const r = summary.result?.[pmcid];
     if (!r) continue;
-    const pdfUrl = await fetchPmcOaPdfUrl(pmcid).catch(() => null);
-    if (!pdfUrl) continue;
     candidates.push({
       source: "pmc",
       pmcid,
       title: r.title ?? null,
       authors: (r.authors ?? []).map((a) => a.name).filter(Boolean),
       doi: (r.articleids ?? []).find((a) => a.idtype === "doi")?.value ?? null,
-      pdfUrl,
+      pdfUrl: `https://europepmc.org/api/getPdf?pmcid=PMC${pmcid}`,
     });
-    await sleep(120); // be polite to NCBI (max ~3 req/s)
   }
   return candidates;
 }
