@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { EvidenceList } from "./EvidenceList";
+import { ProvenanceList } from "./ProvenanceList";
 import { cn } from "@/lib/utils";
 
 type Entry = ManuscriptScreenResult["screenedReferences"][number];
@@ -253,6 +254,9 @@ export function ReferenceTable({ entries }: { entries: Entry[] }) {
                   )}
                   {entry.result.evidence.length > 0 && (
                     <EvidenceList evidence={entry.result.evidence} />
+                  )}
+                  {entry.reference.provenance && (
+                    <ProvenanceList provenance={entry.reference.provenance} />
                   )}
                 </div>
               )}
