@@ -34,7 +34,12 @@ export function Dropzone({ onDrop, busy, hint }: DropzoneProps) {
       );
       toast.error(`无法接收 ${rejections.length} 个文件：${[...reasons].join("；")}`);
     },
-    disabled: busy,
+    // `disabled: busy` strips react-dropzone's drag handlers entirely, so a
+    // file dropped while a previous parse is still in flight goes silently
+    // nowhere. Use `noClick: busy` instead — opens-via-click is suppressed
+    // (avoiding the file picker dialog mid-parse) but drag-and-drop keeps
+    // working. SessionsContext still serializes the actual parse jobs.
+    noClick: busy,
   });
 
   return (
