@@ -47,14 +47,28 @@ async function login() {
   return `rw_screen_session=${m[1]}`;
 }
 
+async function fetchWithRetry(makeReq, retries = 3) {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await makeReq();
+    } catch (err) {
+      if (i >= retries) throw err;
+      await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
+    }
+  }
+}
+
 async function uploadAndParse(cookie, pdfPath) {
   const buf = await fs.readFile(pdfPath);
-  const fd = new FormData();
-  fd.append("file", new Blob([buf], { type: "application/pdf" }), path.basename(pdfPath));
-  const up = await fetch(`${BASE}/api/upload`, {
-    method: "POST",
-    headers: { Cookie: cookie, Origin: BASE },
-    body: fd,
+  const up = await fetchWithRetry(async () => {
+    const fd = new FormData();
+    fd.append("file", new Blob([buf], { type: "application/pdf" }), path.basename(pdfPath));
+    const res = await fetch(`${BASE}/api/upload`, {
+      method: "POST",
+      headers: { Cookie: cookie, Origin: BASE },
+      body: fd,
+    });
+    return res;
   });
   if (!up.ok) throw new Error(`upload ${up.status}: ${await up.text()}`);
   const { manuscriptId } = await up.json();

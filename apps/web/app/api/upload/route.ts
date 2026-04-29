@@ -23,7 +23,11 @@ export async function POST(req: Request) {
   if ("response" in auth) return auth.response;
   const { user } = auth;
   const limited = rateLimit(`upload:${user.id}`, {
-    limit: 30,
+    // 100/h is comfortable for batch reviewers (Cell editor reviewing a
+    // workshop submission cluster, lab triaging weekly archives) without
+    // letting a runaway script flood the parse queue. The previous 30/h cap
+    // tripped during routine bulk-screening flows.
+    limit: 100,
     windowMs: 60 * 60_000,
   });
   if (!limited.allowed) {

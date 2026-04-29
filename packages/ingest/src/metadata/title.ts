@@ -8,6 +8,15 @@ import { AFFILIATION_RE } from "./affiliations.js";
 export const TITLE_NOISE_RE =
   /(permission|attribution|copyright|all rights reserved|license|hereby grants|©|arxiv:|preprint|under review|in press)/i;
 
+// Article-class banners that frequently appear above the real title in
+// journal templates: "Research Article", "Methods Article", "Brief
+// Communication", "Technical Report", "Review Article", etc. These are
+// short fixed phrases so a regex match is safer than the letter-spacing
+// heuristic. (Wiley uses both letter-spaced "R E S E A R C H..." and the
+// concatenated "Research Article" depending on the journal.)
+const TITLE_BANNER_PHRASE_RE =
+  /^\s*(?:research|methods?|review|technical|brief|original|short|case|news|editorial|perspective|commentary|letter|rapid|systematic\s+review)\s+(?:article|report|communication|note|paper|method)s?\s*$/i;
+
 export function extractTitle(lines: string[]): string | null {
   const horizon = Math.min(lines.length, 25);
   for (let i = 0; i < horizon; i += 1) {
@@ -32,6 +41,7 @@ export function extractTitle(lines: string[]): string | null {
 export function candidateLooksLikeTitle(line: string): boolean {
   if (line.length < 6 || line.length > 250) return false;
   if (TITLE_NOISE_RE.test(line)) return false;
+  if (TITLE_BANNER_PHRASE_RE.test(line)) return false;
   if (/^abstract$/i.test(line)) return false;
   if (/^doi[: ]/i.test(line)) return false;
   if (/^https?:\/\//i.test(line)) return false;
@@ -79,10 +89,15 @@ export function shouldMergeTitleContinuation(curr: string, next: string): boolea
   // Anomaly Detection in CAN-FD" + "Vehicle Networks".
   const noTerminal = !/[.!?]$/.test(curr);
   const nextTokens = next.split(/\s+/).filter(Boolean);
-  const nextLooksTitle = /^[A-Z\p{Lu}]/u.test(next) && nextTokens.length <= 4;
+  // Allow up to 6 continuation tokens — many real titles wrap a noun phrase
+  // like "Agents in Real-World Scenarios" (4–5 tokens) onto the second line.
+  const nextLooksTitle = /^[A-Z\p{Lu}]/u.test(next) && nextTokens.length <= 6;
   const currTokens = curr.split(/\s+/).filter(Boolean).length;
-  const currLongTitle = currTokens >= 6 && mostlyCapitalized(curr);
-  return noTerminal && nextLooksTitle && currLongTitle && next.length <= 60;
+  // 4 tokens (was 6) so titles like "DV-World: Benchmarking Data Visualization"
+  // still pick up the wrap. Author bylines are filtered separately by
+  // looksLikeAuthorListLine above, so widening this gate is safe.
+  const currLongTitle = currTokens >= 4 && mostlyCapitalized(curr);
+  return noTerminal && nextLooksTitle && currLongTitle && next.length <= 80;
 }
 
 export function looksLikeAuthorListLine(line: string): boolean {
