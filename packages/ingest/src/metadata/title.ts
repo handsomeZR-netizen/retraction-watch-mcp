@@ -44,7 +44,14 @@ export function candidateLooksLikeTitle(line: string): boolean {
   if (cjkChars >= 4 && cjkChars / line.length >= 0.5) {
     return true;
   }
-  if (line.split(/\s+/).length < 2) return false;
+  const tokens = line.split(/\s+/).filter(Boolean);
+  if (tokens.length < 2) return false;
+  // Letter-spaced banner text such as "R E S E A R C H  A R T I C L E" or
+  // "M E T H O D S  A R T I C L E" appears verbatim near the top of many
+  // single-column journal templates (J Ind Ecol, Wiley, etc.) and used to
+  // get promoted to the title because it satisfies all the other gates.
+  const singleCharTokens = tokens.filter((t) => t.length === 1).length;
+  if (tokens.length >= 4 && singleCharTokens / tokens.length >= 0.6) return false;
   if (/^[a-z]/.test(line) && !/^[a-z]+\s+[A-Z]/.test(line)) return false;
   return true;
 }

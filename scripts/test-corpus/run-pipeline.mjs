@@ -139,23 +139,29 @@ async function main() {
     const t1 = Date.now();
     const pdfAbs = path.resolve(ROOT, entry.pdfPath);
     process.stdout.write(`[start ${entry.id}]\n`);
-    const head = await uploadAndParse(cookie, pdfAbs);
+    let head = null;
     let report = null;
-    if (head.status === "done") report = await fetchFullResult(cookie, head.manuscriptId);
+    let pipelineError = null;
+    try {
+      head = await uploadAndParse(cookie, pdfAbs);
+      if (head.status === "done") report = await fetchFullResult(cookie, head.manuscriptId);
+    } catch (err) {
+      pipelineError = err.message;
+    }
     const summary = {
       id: entry.id,
       layout: entry.layout,
       title: entry.title,
-      manuscriptId: head.manuscriptId,
-      status: head.status,
-      verdict: head.verdict,
-      error: head.error ?? null,
-      totals: head.totals ?? null,
+      manuscriptId: head?.manuscriptId ?? null,
+      status: pipelineError ? "pipeline-error" : head?.status,
+      verdict: head?.verdict ?? null,
+      error: pipelineError ?? head?.error ?? null,
+      totals: head?.totals ?? null,
       report,
       elapsedMs: Date.now() - t1,
     };
     await fs.writeFile(entry.parsedPath, JSON.stringify(summary, null, 2));
-    process.stdout.write(`  done ${entry.id} status=${head.status} verdict=${head.verdict ?? "-"} (${(summary.elapsedMs / 1000).toFixed(1)}s)\n`);
+    process.stdout.write(`  ${summary.status} ${entry.id} verdict=${summary.verdict ?? "-"} ${pipelineError ? "ERR=" + pipelineError : ""} (${(summary.elapsedMs / 1000).toFixed(1)}s)\n`);
     return summary;
   });
 
