@@ -161,6 +161,12 @@ export async function GET() {
       source: llmSource,
       hasApiKey: effApiKey.length > 0,
     },
+    enrichment: {
+      enabled: config.enrichment.enabled,
+      hasContactEmail: Boolean(
+        config.enrichment.contactEmail || process.env.RW_CONTACT_EMAIL,
+      ),
+    },
     source,
   });
 }

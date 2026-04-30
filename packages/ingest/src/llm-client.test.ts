@@ -130,3 +130,70 @@ describe("DeepseekLlmClient.segmentReferences", () => {
     ]);
   });
 });
+
+describe("DeepseekLlmClient.structureReferences caching", () => {
+  it("caches batches by (model, prompt-version, payload) so re-runs skip the LLM", async () => {
+    openAiMock.create.mockReset();
+    openAiMock.create.mockResolvedValueOnce({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              references: [
+                {
+                  index: 0,
+                  raw: "Smith J. A sample article. Journal. 2020.",
+                  title: "A sample article",
+                  authors: ["Smith J."],
+                  year: 2020,
+                  journal: "Journal",
+                  doi: null,
+                },
+              ],
+            }),
+          },
+        },
+      ],
+    });
+
+    const memCache = new Map<string, unknown>();
+    const cache = {
+      get<T>(key: string): T | null {
+        return (memCache.get(key) as T | undefined) ?? null;
+      },
+      set<T>(key: string, value: T): void {
+        memCache.set(key, value);
+      },
+    };
+    const refs = [{ index: 0, raw: "Smith J. A sample article. Journal. 2020." }];
+
+    const clientA = new DeepseekLlmClient(
+      {
+        baseUrl: "https://llm.example.test/v1",
+        apiKey: "sk-test",
+        model: "test-model",
+      },
+      { cache },
+    );
+    const firstOut = await clientA.structureReferences(refs);
+    expect(firstOut[0]?.title).toBe("A sample article");
+    expect(openAiMock.create).toHaveBeenCalledTimes(1);
+    expect(clientA.stats.refsBatchCacheHits).toBe(0);
+
+    // Second client (a fresh process) reuses the same cache. No LLM call,
+    // refsBatchCacheHits goes up, refsCalls stays 0.
+    const clientB = new DeepseekLlmClient(
+      {
+        baseUrl: "https://llm.example.test/v1",
+        apiKey: "sk-test",
+        model: "test-model",
+      },
+      { cache },
+    );
+    const secondOut = await clientB.structureReferences(refs);
+    expect(secondOut).toEqual(firstOut);
+    expect(openAiMock.create).toHaveBeenCalledTimes(1);
+    expect(clientB.stats.refsBatchCacheHits).toBe(1);
+    expect(clientB.stats.refsCalls).toBe(0);
+  });
+});

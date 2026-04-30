@@ -32,12 +32,24 @@ export interface EnrichmentClients {
   llm?: LlmExtractionClient;
 }
 
+export interface EnrichmentLimits {
+  /**
+   * Cap on Crossref network calls per manuscript across Step 2 (DOI verify)
+   * and Step 3 (title→DOI search). Once reached, further refs in this
+   * manuscript skip Crossref and fall through unchanged. Defaults to 60,
+   * which is a generous headroom over a typical 30-50 ref paper but stops a
+   * pathological 200-ref bibliography from exhausting the polite pool.
+   */
+  maxCrossrefCalls?: number;
+}
+
 export interface EnrichmentTelemetry {
   crossrefCalls: number;
   epmcCalls: number;
   llmCalls: number;
   enrichmentFailures: number;
   cacheHits: number;
+  crossrefSkippedOverLimit: number;
 }
 
 export interface ParseTraceEntry {
@@ -58,11 +70,13 @@ export interface EnrichmentResult {
 }
 
 const EXTERNAL_CONFIDENCE = 0.95;
+const DEFAULT_MAX_CROSSREF_CALLS = 60;
 
 export async function enrichMetadata(
   candidates: StructuredReference[],
   unresolvedRaw: RawReference[],
   clients: EnrichmentClients,
+  limits: EnrichmentLimits = {},
 ): Promise<EnrichmentResult> {
   const telemetry: EnrichmentTelemetry = {
     crossrefCalls: 0,
@@ -70,7 +84,9 @@ export async function enrichMetadata(
     llmCalls: 0,
     enrichmentFailures: 0,
     cacheHits: 0,
+    crossrefSkippedOverLimit: 0,
   };
+  const maxCrossrefCalls = limits.maxCrossrefCalls ?? DEFAULT_MAX_CROSSREF_CALLS;
   const trace: ParseTraceEntry[] = [];
   let working = candidates.map((r, i) => ({ ref: r, refIndex: i }));
 
@@ -121,6 +137,10 @@ export async function enrichMetadata(
     for (const slot of working) {
       const { ref, refIndex } = slot;
       if (!ref.doi) continue;
+      if (telemetry.crossrefCalls >= maxCrossrefCalls) {
+        telemetry.crossrefSkippedOverLimit += 1;
+        continue;
+      }
       telemetry.crossrefCalls += 1;
       const work = await clients.crossref.getByDoi(ref.doi);
       if (!work) {
@@ -149,6 +169,10 @@ export async function enrichMetadata(
       // we'd be querying Crossref with garbage.
       const tier = classifyReferenceTier(ref);
       if (tier === "raw_only") continue;
+      if (telemetry.crossrefCalls >= maxCrossrefCalls) {
+        telemetry.crossrefSkippedOverLimit += 1;
+        continue;
+      }
       telemetry.crossrefCalls += 1;
       const resolved = await clients.crossref.resolveByTitle(ref.title, ref.year);
       if (!resolved) {

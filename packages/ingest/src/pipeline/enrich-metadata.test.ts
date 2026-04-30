@@ -160,6 +160,42 @@ describe("enrichMetadata", () => {
     expect(out.telemetry.epmcCalls).toBe(1);
   });
 
+  it("respects maxCrossrefCalls and stops calling Crossref past the cap", async () => {
+    // 5 refs, all with a local DOI. With maxCrossrefCalls=2, only the first
+    // two should hit Crossref; the rest skip but still pass through unchanged.
+    const raws: RawReference[] = Array.from({ length: 5 }, (_, i) => ({
+      index: i,
+      raw: `Doe J${i}. Title ${i}. doi:10.1234/ref-${i} 2020.`,
+    }));
+    const candidates = extractCandidates(raws);
+    expect(candidates).toHaveLength(5);
+
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        message: {
+          DOI: "10.1234/x",
+          title: ["Filled by Crossref"],
+          issued: { "date-parts": [[2020]] },
+        },
+      }),
+    ) as unknown as typeof fetch;
+    const http = new HttpClient({ userAgent: UA, fetchImpl });
+    const crossref = new CrossrefClient(http, cache);
+
+    const out = await enrichMetadata(
+      candidates,
+      [],
+      { crossref },
+      { maxCrossrefCalls: 2 },
+    );
+    expect(out.telemetry.crossrefCalls).toBe(2);
+    expect(out.telemetry.crossrefSkippedOverLimit).toBe(3);
+    // Network was hit exactly twice.
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    // All 5 refs still flow through (we don't drop them on cap).
+    expect(out.references).toHaveLength(5);
+  });
+
   it("records local-vs-Crossref title conflict instead of overwriting", async () => {
     const raws: RawReference[] = [
       { index: 0, raw: "Doe J. Locally Extracted Title. doi:10.1234/abc 2020." },

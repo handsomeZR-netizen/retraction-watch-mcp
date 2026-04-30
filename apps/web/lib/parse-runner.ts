@@ -190,6 +190,8 @@ async function runParseJob(job: ParseJob): Promise<void> {
       ? { baseUrl: effLlm.baseUrl, apiKey: effLlm.apiKey, model: effLlm.model }
       : undefined;
 
+    const enrichmentContact =
+      config.enrichment.contactEmail || process.env.RW_CONTACT_EMAIL || "";
     const result = await screenManuscript(
       repo,
       {
@@ -203,6 +205,8 @@ async function runParseJob(job: ParseJob): Promise<void> {
         llm,
         llmHeader: effLlm.enabled && effLlm.enableHeaderParse,
         cloudOcr: config.ocr.cloudEnabled,
+        enrichedPipeline: config.enrichment.enabled,
+        enrichmentContact: enrichmentContact || undefined,
         progress: (ev) => emit(job.manuscriptId, ev),
       },
     );

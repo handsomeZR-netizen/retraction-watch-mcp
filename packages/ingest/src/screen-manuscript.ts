@@ -53,15 +53,22 @@ export interface ScreenManuscriptOptions {
   cloudOcr?: boolean;
   progress?: IngestProgressSink;
   /**
-   * Opt into the four-stage enriched pipeline. Defaults to env
-   * `RW_USE_ENRICHED_PIPELINE === "1"`. When true, references go through
-   * `extractCandidates` → `enrichMetadata` (Crossref/EPMC + LLM fusion)
-   * before screening. Crossref enrichment is skipped if no contact mailto
-   * is supplied via `enrichmentContact` or `RW_CONTACT_EMAIL`.
+   * Opt out of the four-stage enriched pipeline. Defaults ON; set env
+   * `RW_USE_ENRICHED_PIPELINE=0` to force-disable. When enabled, references go
+   * through `extractCandidates` → `enrichMetadata` (Crossref/EPMC + LLM
+   * fusion) before screening. Crossref enrichment is skipped if no contact
+   * mailto is supplied via `enrichmentContact` or `RW_CONTACT_EMAIL`, but
+   * LLM-only enrichment (when an LLM client is configured) still runs.
    */
   enrichedPipeline?: boolean;
   enrichmentContact?: string;
   enrichmentCachePath?: string;
+  /**
+   * Cap on Crossref network calls per manuscript (default 60). Forwarded
+   * to `enrichMetadata.limits.maxCrossrefCalls`. Once reached, remaining
+   * refs in this manuscript skip Crossref but other steps still run.
+   */
+  maxCrossrefCalls?: number;
 }
 
 export async function screenManuscript(
@@ -96,9 +103,18 @@ export async function screenManuscript(
     detail: { ocrUsed: extracted.ocrUsed, warnings: extracted.warnings },
   });
 
-  const llmClient = options.llm ? new LlmExtractionClient(options.llm) : null;
   const enrichedPipeline =
-    options.enrichedPipeline ?? process.env.RW_USE_ENRICHED_PIPELINE === "1";
+    options.enrichedPipeline ?? process.env.RW_USE_ENRICHED_PIPELINE !== "0";
+  // Open the external cache up-front so the LLM client can reuse it for
+  // structured-ref result caching even on legacy paths. The same instance is
+  // later threaded into Crossref/EPMC clients when enriched is on.
+  const externalCachePath =
+    options.enrichmentCachePath ?? join(process.cwd(), ".local-app-db", "external-cache.sqlite");
+  const externalCache: ExternalCache | null =
+    options.llm || enrichedPipeline ? new ExternalCache(externalCachePath) : null;
+  const llmClient = options.llm
+    ? new LlmExtractionClient(options.llm, { cache: externalCache ?? undefined })
+    : null;
 
   let metadata = extractHeaderMetadata({
     fullText: extracted.fullText,
@@ -179,25 +195,28 @@ export async function screenManuscript(
     enrichmentFailures: 0,
     cacheHits: 0,
   };
-  let externalCache: ExternalCache | null = null;
 
   if (enrichedPipeline) {
     const candidates = extractCandidates(rawRefs);
     const { unresolved } = regexStructure(rawRefs);
-    const clients = buildEnrichmentClients(options, llmClient);
-    externalCache = clients.cache;
-    const enrichResult = await enrichMetadata(candidates, unresolved, {
-      crossref: clients.crossref,
-      europepmc: clients.europepmc,
-      llm: clients.llm,
-    });
+    const clients = buildEnrichmentClients(options, llmClient, externalCache);
+    const enrichResult = await enrichMetadata(
+      candidates,
+      unresolved,
+      {
+        crossref: clients.crossref,
+        europepmc: clients.europepmc,
+        llm: clients.llm,
+      },
+      { maxCrossrefCalls: options.maxCrossrefCalls },
+    );
     allStructured = dedupeStructuredRefs([...bibReferences, ...enrichResult.references]);
     parseTrace = enrichResult.trace;
     enrichmentTelemetry.crossrefCalls = enrichResult.telemetry.crossrefCalls;
     enrichmentTelemetry.epmcCalls = enrichResult.telemetry.epmcCalls;
     enrichmentTelemetry.llmCalls = enrichResult.telemetry.llmCalls;
     enrichmentTelemetry.enrichmentFailures = enrichResult.telemetry.enrichmentFailures;
-    enrichmentTelemetry.cacheHits = clients.cache?.stats.hits ?? 0;
+    enrichmentTelemetry.cacheHits = externalCache?.stats.hits ?? 0;
     progress({
       stage: "refs_structured",
       message: `结构化参考文献：${allStructured.length} 条 (enriched)`,
@@ -320,23 +339,20 @@ interface BuiltEnrichmentClients {
   crossref?: CrossrefClient;
   europepmc?: EuropePmcClient;
   llm?: LlmExtractionClient;
-  cache: ExternalCache | null;
 }
 
 function buildEnrichmentClients(
   options: ScreenManuscriptOptions,
   llmClient: LlmExtractionClient | null,
+  cache: ExternalCache | null,
 ): BuiltEnrichmentClients {
   const contact = options.enrichmentContact ?? process.env.RW_CONTACT_EMAIL;
-  if (!contact) {
+  if (!contact || !cache) {
     // Without a contact mailto we won't hit Crossref / EPMC (the polite-pool
     // User-Agent constructor would reject), but LLM-only enrichment can
     // still help refs whose regex extraction failed.
-    return { llm: llmClient ?? undefined, cache: null };
+    return { llm: llmClient ?? undefined };
   }
-  const cachePath =
-    options.enrichmentCachePath ?? join(process.cwd(), ".local-app-db", "external-cache.sqlite");
-  const cache = new ExternalCache(cachePath);
   const http = new HttpClient({
     userAgent: `rw-screen/0.4.11 (mailto:${contact})`,
     timeoutMs: 15_000,
@@ -347,7 +363,6 @@ function buildEnrichmentClients(
     crossref: new CrossrefClient(http, cache),
     europepmc: new EuropePmcClient(http, cache),
     llm: llmClient ?? undefined,
-    cache,
   };
 }
 

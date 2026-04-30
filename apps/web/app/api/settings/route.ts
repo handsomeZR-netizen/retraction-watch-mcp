@@ -29,6 +29,18 @@ const SaveSchema = z.object({
       keepHours: z.number().int().min(1).max(24 * 30).optional(),
     })
     .optional(),
+  enrichment: z
+    .object({
+      enabled: z.boolean().optional(),
+      contactEmail: z
+        .string()
+        .max(200)
+        .refine((v) => v === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), {
+          message: "Must be a valid email address or empty",
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 export async function GET() {
@@ -59,6 +71,7 @@ export async function POST(req: Request) {
     llm: { ...current.llm, ...(parsed.data.llm ?? {}) },
     ocr: { ...current.ocr, ...(parsed.data.ocr ?? {}) },
     retention: { ...current.retention, ...(parsed.data.retention ?? {}) },
+    enrichment: { ...current.enrichment, ...(parsed.data.enrichment ?? {}) },
   });
   writeAudit({
     userId: auth.user.id,
