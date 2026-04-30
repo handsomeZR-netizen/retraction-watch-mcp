@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dropzone } from "@/components/Dropzone";
+import { HomeIntroCard } from "@/components/dashboard/HomeIntroCard";
 import { QuickActions } from "@/components/dashboard/QuickActions";
 import { RecentList } from "@/components/dashboard/RecentList";
 import { ScopeBanner } from "@/components/dashboard/ScopeBanner";
@@ -85,7 +86,7 @@ export default function HomePage() {
   return (
     <div className="space-y-8">
       <section className="grid lg:grid-cols-[1.4fr_1fr] gap-8 items-start">
-        <div>
+        <div className="space-y-6">
           {data ? (
             <ScopeBanner
               user={{
@@ -108,6 +109,7 @@ export default function HomePage() {
               </div>
             </div>
           )}
+          <HomeIntroCard />
         </div>
         <div className="lg:sticky lg:top-20">
           <Dropzone
