@@ -131,8 +131,14 @@ describe("enrichMetadata", () => {
     ]);
     expect(candidates[0].pmid).toBe("31234567");
 
-    const fetchImpl = vi.fn(async () =>
-      jsonResponse({
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      // Regression guard: the PMID fallback used to call getByDoi(pmid),
+      // which built `DOI:"<pmid>"` queries that EPMC could never resolve.
+      // The fix routes through getByPmid → EXT_ID:<pmid> AND SRC:MED.
+      const url = typeof input === "string" ? input : input.toString();
+      expect(url).toMatch(/EXT_ID/);
+      expect(url).not.toMatch(/DOI%3A|DOI:/);
+      return jsonResponse({
         resultList: {
           result: [
             {
@@ -143,8 +149,8 @@ describe("enrichMetadata", () => {
             },
           ],
         },
-      }),
-    ) as unknown as typeof fetch;
+      });
+    }) as unknown as typeof fetch;
     const http = new HttpClient({ userAgent: UA, fetchImpl });
     const europepmc = new EuropePmcClient(http, cache);
 

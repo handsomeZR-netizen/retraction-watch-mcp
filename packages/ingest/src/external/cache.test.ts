@@ -64,6 +64,26 @@ describe("ExternalCache", () => {
   });
 });
 
+describe("ExternalCache constructor", () => {
+  it("creates the parent directory if it doesn't exist", () => {
+    const fresh = mkdtempSync(join(tmpdir(), "rw-cache-fresh-"));
+    const nestedDir = join(fresh, "nope", "still-nope");
+    const dbPath = join(nestedDir, "cache.sqlite");
+    // Sanity check: the directory genuinely does not exist before construction.
+    expect(() => mkdtempSync(join(nestedDir, "x-"))).toThrow();
+    let c: ExternalCache | null = null;
+    try {
+      c = new ExternalCache(dbPath);
+      // Should round-trip a value, proving the file got created.
+      c.set("k", "v");
+      expect(c.get<string>("k")).toBe("v");
+    } finally {
+      c?.close();
+      rmSync(fresh, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("cacheKey", () => {
   it("joins source and parts with colon", () => {
     expect(cacheKey("crossref", "doi", "10.1/abc")).toBe("crossref:doi:10.1/abc");

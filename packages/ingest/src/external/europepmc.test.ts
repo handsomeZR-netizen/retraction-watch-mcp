@@ -86,6 +86,50 @@ describe("EuropePmcClient.getByDoi", () => {
   });
 });
 
+describe("EuropePmcClient.getByPmid", () => {
+  it("queries EXT_ID + SRC:MED, returns parsed work, and caches the hit", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      // Confirm we're querying by PMID, not DOI.
+      expect(url).toMatch(/EXT_ID/);
+      expect(url).toMatch(/SRC%3AMED|SRC:MED/);
+      expect(url).not.toMatch(/DOI%3A|DOI:/);
+      return jsonResponse({ resultList: { result: [SAMPLE] } });
+    }) as unknown as typeof fetch;
+    const http = new HttpClient({ userAgent: UA, fetchImpl });
+    const client = new EuropePmcClient(http, cache);
+    const a = await client.getByPmid("31234567");
+    const b = await client.getByPmid("31234567");
+    expect(a?.doi).toBe("10.1234/abc");
+    expect(a?.pmid).toBe("31234567");
+    expect(b?.doi).toBe("10.1234/abc");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("strips non-digits from the PMID input (e.g. 'PMID: 12345')", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      expect(url).toMatch(/EXT_ID%3A12345|EXT_ID:12345/);
+      return jsonResponse({ resultList: { result: [SAMPLE] } });
+    }) as unknown as typeof fetch;
+    const http = new HttpClient({ userAgent: UA, fetchImpl });
+    const client = new EuropePmcClient(http, cache);
+    const out = await client.getByPmid("PMID: 12345");
+    expect(out?.doi).toBe("10.1234/abc");
+  });
+
+  it("caches negative results so a second miss doesn't re-fetch", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ resultList: { result: [] } }),
+    ) as unknown as typeof fetch;
+    const http = new HttpClient({ userAgent: UA, fetchImpl });
+    const client = new EuropePmcClient(http, cache);
+    expect(await client.getByPmid("99999999")).toBeNull();
+    expect(await client.getByPmid("99999999")).toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("EuropePmcClient.resolveByTitle", () => {
   it("accepts when title and year align", async () => {
     const fetchImpl = vi.fn(async () =>
