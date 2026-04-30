@@ -18,6 +18,7 @@ import {
 import { extractDocx } from "./docx.js";
 import { extractLatex } from "./latex.js";
 import { extractPdf } from "./pdf.js";
+import { extractPdfLayoutAware } from "./pdf-layout.js";
 import { extractHeaderMetadata } from "./metadata/index.js";
 import {
   heuristicStructureReferences,
@@ -157,14 +158,34 @@ export async function screenManuscript(
   // \bibitem block could still leave references unparsed; merging both
   // sources avoids silently dropping them. Duplicates collapse later via
   // structured DOI/title comparison in the screening loop.
-  const split = locateAndSplitReferences(extracted);
+  let split = locateAndSplitReferences(extracted);
   let rawRefs: RawReference[] = split.refs;
 
-  // LLM-segmenter fallback: when the regex layer found nothing or almost
-  // nothing (typical for double-column PDFs whose "References" header was
-  // dropped by reading order), ask the LLM to identify ref boundaries
-  // directly in the raw text. Strictly opt-in (requires llmClient); fails
-  // open (returns 0 refs) if the LLM is unreachable.
+  // Layout-aware re-extraction (PDF only): when the regex splitter signaled
+  // it can't locate the References section (typical for double-column papers
+  // whose flat-text reading order ate the header), re-read the PDF with bbox
+  // info and column detection, then re-split. This is deterministic and
+  // budget-free, so we try it BEFORE the LLM segmenter.
+  let layoutAwareUsed = false;
+  if (split.needsLlmFallback && input.fileType === "pdf") {
+    const layoutDoc = await extractPdfLayoutAware(input.buffer).catch(() => null);
+    if (layoutDoc && layoutDoc.fullText.length > 200) {
+      const split2 = locateAndSplitReferences({
+        ...layoutDoc,
+        warnings: extracted.warnings,
+      });
+      if (split2.refs.length > split.refs.length) {
+        split = split2;
+        rawRefs = split2.refs;
+        layoutAwareUsed = true;
+      }
+    }
+  }
+
+  // LLM-segmenter fallback: when both the regex layer and the layout-aware
+  // re-extraction couldn't find enough refs, ask the LLM to identify ref
+  // boundaries directly. Strictly opt-in (requires llmClient); fails open
+  // (returns 0 refs) if the LLM is unreachable.
   let llmSegmented = 0;
   if (split.needsLlmFallback && llmClient) {
     const tailStart = split.referencesStartIndex >= 0
@@ -182,8 +203,14 @@ export async function screenManuscript(
     stage: "refs_segmented",
     message: llmSegmented > 0
       ? `参考文献分割：${bibReferences.length + rawRefs.length} 条（LLM 兜底切出 ${llmSegmented}）`
-      : `参考文献分割：${bibReferences.length + rawRefs.length} 条`,
-    detail: { count: bibReferences.length + rawRefs.length, llmSegmented },
+      : layoutAwareUsed
+        ? `参考文献分割：${bibReferences.length + rawRefs.length} 条（双栏布局重读救回）`
+        : `参考文献分割：${bibReferences.length + rawRefs.length} 条`,
+    detail: {
+      count: bibReferences.length + rawRefs.length,
+      llmSegmented,
+      layoutAwareUsed,
+    },
   });
 
   let allStructured: StructuredReference[];

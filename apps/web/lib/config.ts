@@ -29,7 +29,7 @@ const DEFAULT_CONFIG: AppConfig = {
     baseUrl: "https://api.deepseek.com/v1",
     apiKey: "",
     model: "deepseek-v4-flash",
-    enableHeaderParse: false,
+    enableHeaderParse: true,
   },
   ocr: {
     cloudEnabled: false,
@@ -142,7 +142,7 @@ function envOverrides(): Partial<AppConfig> {
       apiKey: (process.env.DEEPSAPI_API_KEY ?? process.env.RW_LLM_API_KEY ?? "").trim(),
       baseUrl: process.env.RW_LLM_BASE_URL ?? DEFAULT_CONFIG.llm.baseUrl,
       model: process.env.RW_LLM_MODEL ?? DEFAULT_CONFIG.llm.model,
-      enableHeaderParse: false,
+      enableHeaderParse: true,
     };
   }
   if (process.env.RW_CONTACT_EMAIL || process.env.RW_USE_ENRICHED_PIPELINE === "0") {
