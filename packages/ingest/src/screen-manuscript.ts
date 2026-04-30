@@ -316,7 +316,7 @@ function buildEnrichmentClients(
     options.enrichmentCachePath ?? join(process.cwd(), ".local-app-db", "external-cache.sqlite");
   const cache = new ExternalCache(cachePath);
   const http = new HttpClient({
-    userAgent: `rw-screen/0.4.10 (mailto:${contact})`,
+    userAgent: `rw-screen/0.4.11 (mailto:${contact})`,
     timeoutMs: 15_000,
     maxRetries: 3,
     perHostConcurrency: 3,

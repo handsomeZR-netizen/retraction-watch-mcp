@@ -4,14 +4,82 @@ This is the operational checklist for running rw-screen on one machine
 (Linux VPS or bare metal). Multi-instance horizontal scaling is **not
 supported in this release** — see "Known limitations" below.
 
+There are **two supported deployment modes**:
+
+* **Docker Compose** (recommended; this is what production runs) — see §1A
+  and §6A.
+* **Bare-metal Node + systemd** — see §1B / §3 and §6B. Useful when Docker
+  isn't available, but you take on more operational responsibility (Node
+  upgrades, secrets file, log rotation, etc.).
+
 For Cloudflare Tunnel exposure (no public IP needed), see also
 [`DEPLOY-CLOUDFLARE.md`](./DEPLOY-CLOUDFLARE.md).
 
 ---
 
-## 1. One-time setup
+## 1A. Docker Compose mode (recommended)
 
-### 1.1 Provision
+This is the path the production server at `8.218.173.91` uses.
+
+### 1A.1 Provision
+
+```bash
+# Ubuntu 22.04 / Debian 12, 2 vCPU, 4 GB RAM, 40 GB SSD.
+sudo apt-get update && sudo apt-get install -y git docker.io docker-compose-v2
+sudo systemctl enable --now docker
+docker --version
+docker compose version
+```
+
+### 1A.2 Clone + configure
+
+```bash
+sudo git clone https://github.com/handsomeZR-netizen/retraction-watch-mcp.git /opt/rw-screen
+cd /opt/rw-screen
+
+# Production env file. Generate secrets via openssl rand -hex 32 each.
+sudo cp .env.example .env
+sudo chmod 600 .env
+sudo nano .env       # fill in RW_BASE_URL, RW_SESSION_SECRET, RW_DATA_KEY, etc.
+
+# First-time data dirs (volume mounts in docker-compose.yml).
+sudo mkdir -p data config
+```
+
+### 1A.3 First boot
+
+```bash
+cd /opt/rw-screen
+sudo docker compose up -d --build
+sudo docker compose logs -f rw-screen          # watch startup
+curl -s http://127.0.0.1:80/api/health         # → {"ok":true,...}
+```
+
+The image tag is read from `package.json` version (`docker-compose.yml`
+references `rw-screen:${VERSION}`). On every `docker compose build`, a
+new image with the current version is produced and replaces the old one.
+
+### 1A.4 Seed the first admin (one-time)
+
+```bash
+sudo docker compose exec rw-screen \
+  sh -c 'ADMIN_USERNAME=admin ADMIN_PASSWORD=changeme-now npm run -w @rw/web seed-admin'
+```
+
+Log in at the public URL and change the password from `/account`.
+
+### 1A.5 Refresh the Retraction Watch corpus
+
+```bash
+sudo docker compose exec rw-screen npm run import
+# Optional: cron weekly. The app reads the SQLite file lazily, no restart needed.
+```
+
+---
+
+## 1B. Bare-metal Node + systemd mode
+
+### 1B.1 Provision
 
 ```bash
 # Recommended: Ubuntu 22.04 / Debian 12, 2 vCPU, 4 GB RAM, 40 GB SSD.
@@ -19,7 +87,7 @@ sudo apt-get update && sudo apt-get install -y nodejs npm git build-essential
 node --version   # must be >= 20
 ```
 
-### 1.2 Clone + install
+### 1B.2 Clone + install
 
 ```bash
 git clone https://github.com/handsomeZR-netizen/retraction-watch-mcp.git /opt/rw-screen
@@ -29,7 +97,7 @@ npm run build              # builds @rw/core and @rw/ingest
 npm run build -w @rw/web   # produces apps/web/.next/standalone
 ```
 
-### 1.3 Import the Retraction Watch corpus
+### 1B.3 Import the Retraction Watch corpus
 
 ```bash
 # Pulls the latest CSV and writes ./data/retraction-watch.sqlite (~70k rows).
@@ -39,7 +107,7 @@ npm run import
 You can re-run this on a cron (weekly) to refresh; the app reads the SQLite
 file lazily, no restart needed.
 
-### 1.4 Generate secrets
+### 1B.4 Generate secrets
 
 ```bash
 mkdir -p /etc/rw-screen
@@ -51,7 +119,7 @@ chmod 600 /etc/rw-screen/*.key
 chown -R rwscreen:rwscreen /etc/rw-screen
 ```
 
-### 1.5 Seed the first admin
+### 1B.5 Seed the first admin
 
 ```bash
 ADMIN_USERNAME=admin ADMIN_PASSWORD='changeme-now' \
@@ -199,6 +267,34 @@ re-created by `npm run import`; no app-level backup needed.
 ---
 
 ## 6. Upgrades
+
+### 6A. Docker Compose upgrade (recommended)
+
+```bash
+cd /opt/rw-screen
+
+# Discard any CRLF / line-ending drift from cross-platform editing — safe
+# because .gitattributes pins LF, but older checkouts may carry residue.
+git status -s | wc -l                     # baseline
+git checkout -- . 2>/dev/null || true
+
+# Untracked-file conflicts (test fixtures created out of band) sometimes
+# block fast-forward. Inspect first; remove if not your work.
+git fetch origin
+git log HEAD..origin/main --oneline
+git pull --ff-only origin main
+
+# Rebuild image at the new package.json version, recreate container.
+sudo docker compose up -d --build
+sudo docker compose logs --since 1m rw-screen | tail -20
+curl -s http://127.0.0.1:80/api/health
+```
+
+The image tag in `docker-compose.yml` follows the `package.json` version,
+so a version bump in the PR is what triggers a clean image rebuild rather
+than a no-op rebuild reusing the same tag.
+
+### 6B. Bare-metal systemd upgrade
 
 ```bash
 cd /opt/rw-screen

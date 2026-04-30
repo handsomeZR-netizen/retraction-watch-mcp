@@ -1,0 +1,45 @@
+# Normalize line endings on checkout for cross-platform development.
+# Prevents the "252 modified files (CRLF noise)" situation that hits the Linux
+# production server when files are checked out on Windows and the working tree
+# ends up with CRLF endings while the index has LF.
+#
+# Source files: always LF, regardless of where checked out.
+* text=auto eol=lf
+
+# Explicitly LF for everything code-shaped (defensive — `text=auto eol=lf`
+# already covers these, but pinning makes the intent obvious).
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.sh text eol=lf
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# Binary assets: never touch.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.pdf binary
+*.sqlite binary
+*.sqlite-wal binary
+*.sqlite-shm binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+
+# Lockfile: keep as LF, but mark as generated so review tooling can collapse it.
+package-lock.json text eol=lf linguist-generated=true
