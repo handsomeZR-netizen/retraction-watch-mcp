@@ -47,6 +47,12 @@ export interface LlmCallStats {
   failures: number;
   schemaFailures: number;
   hallucinationsDropped: number;
+  /**
+   * Subset of hallucinationsDropped that were specifically `title` rejections
+   * — i.e. the LLM put page-range / vol(issue) noise into the title slot.
+   * Tracked separately so benchmarks can see this category move.
+   */
+  titleNoiseDropped: number;
   refsBatchCacheHits: number;
 }
 
@@ -99,6 +105,7 @@ export class LlmExtractionClient {
     failures: 0,
     schemaFailures: 0,
     hallucinationsDropped: 0,
+    titleNoiseDropped: 0,
     refsBatchCacheHits: 0,
   };
 
@@ -419,6 +426,9 @@ function normalizeRefs(
     });
     if (validation.rejected.length > 0) {
       stats.hallucinationsDropped += validation.rejected.length;
+      if (validation.rejected.includes("title")) {
+        stats.titleNoiseDropped += 1;
+      }
     }
     byIndex.set(r.index, {
       raw: refText,
