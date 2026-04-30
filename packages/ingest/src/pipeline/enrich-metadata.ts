@@ -188,7 +188,7 @@ export async function enrichMetadata(
       if (ref.doi) continue;
       if (!ref.pmid) continue;
       telemetry.epmcCalls += 1;
-      const work = await clients.europepmc.getByDoi(ref.pmid);
+      const work = await clients.europepmc.getByPmid(ref.pmid);
       if (!work || !work.doi) {
         trace.push({
           refIndex,

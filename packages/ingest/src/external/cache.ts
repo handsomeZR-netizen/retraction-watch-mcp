@@ -6,6 +6,8 @@
  * strings; the cache does not interpret them.
  */
 
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import Database from "better-sqlite3";
 
 const DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -22,6 +24,15 @@ export class ExternalCache {
   readonly stats: CacheStats = { hits: 0, misses: 0, writes: 0, expired: 0 };
 
   constructor(path: string) {
+    // better-sqlite3 throws if the parent directory doesn't exist. The default
+    // cache path is `${cwd}/.local-app-db/external-cache.sqlite`, which on a
+    // freshly-cloned deployment hasn't been created yet — without this the
+    // enriched pipeline would crash before any screening happens. The `:memory:`
+    // sentinel and bare filenames have no directory and are skipped.
+    const dir = dirname(path);
+    if (dir && dir !== "." && path !== ":memory:") {
+      mkdirSync(dir, { recursive: true });
+    }
     this.db = new Database(path);
     this.db.pragma("journal_mode = WAL");
     this.db.exec(`

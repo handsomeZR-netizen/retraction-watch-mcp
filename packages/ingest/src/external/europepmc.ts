@@ -45,17 +45,40 @@ export class EuropePmcClient {
     if (cached) return cached.found ? (cached.work ?? null) : null;
 
     const url = `${EPMC_BASE}/search?query=${encodeURIComponent(`DOI:"${normalized}"`)}&format=json&resultType=lite&pageSize=1`;
+    return this.fetchSingle(url, key);
+  }
+
+  /**
+   * Look up a Europe PMC record by PMID. Used by the enrichment pipeline as
+   * a fallback when a reference has a PMID but no DOI — EPMC frequently has
+   * the DOI on file even when the source citation didn't include one.
+   */
+  async getByPmid(pmid: string): Promise<EpmcWork | null> {
+    const normalized = pmid.trim().replace(/\D+/g, "");
+    if (!normalized) return null;
+    const key = cacheKey("europepmc", "pmid", normalized);
+    const cached = this.cache?.get<{ found: boolean; work?: EpmcWork }>(key);
+    if (cached) return cached.found ? (cached.work ?? null) : null;
+
+    // SRC:MED restricts to MEDLINE — EXT_ID is unique per source and a bare
+    // EXT_ID lookup can return non-MEDLINE records (PMC, Agricola, …) with
+    // colliding ids.
+    const url = `${EPMC_BASE}/search?query=${encodeURIComponent(`EXT_ID:${normalized} AND SRC:MED`)}&format=json&resultType=lite&pageSize=1`;
+    return this.fetchSingle(url, key);
+  }
+
+  private async fetchSingle(url: string, cacheKeyStr: string): Promise<EpmcWork | null> {
     const res = await this.http.getJson<EpmcSearchResponse>(url, { failGracefully: true });
     if (!res.ok || !res.data) {
-      this.cache?.set(key, { found: false }, 7 * 24 * 60 * 60 * 1000);
+      this.cache?.set(cacheKeyStr, { found: false }, 7 * 24 * 60 * 60 * 1000);
       return null;
     }
     const work = parseFirst(res.data);
     if (work) {
-      this.cache?.set(key, { found: true, work });
+      this.cache?.set(cacheKeyStr, { found: true, work });
       return work;
     }
-    this.cache?.set(key, { found: false }, 7 * 24 * 60 * 60 * 1000);
+    this.cache?.set(cacheKeyStr, { found: false }, 7 * 24 * 60 * 60 * 1000);
     return null;
   }
 
