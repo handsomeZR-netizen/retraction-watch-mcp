@@ -31,6 +31,7 @@ import { extractCandidates } from "./pipeline/extract-candidates.js";
 import { enrichMetadata, type EnrichmentClients } from "./pipeline/enrich-metadata.js";
 import { CrossrefClient } from "./external/crossref.js";
 import { EuropePmcClient } from "./external/europepmc.js";
+import { OpenAlexClient } from "./external/openalex.js";
 import { HttpClient } from "./external/http-client.js";
 import { ExternalCache } from "./external/cache.js";
 import type {
@@ -70,6 +71,10 @@ export interface ScreenManuscriptOptions {
    * refs in this manuscript skip Crossref but other steps still run.
    */
   maxCrossrefCalls?: number;
+  /**
+   * Cap on OpenAlex network calls per manuscript (default 60).
+   */
+  maxOpenAlexCalls?: number;
 }
 
 export async function screenManuscript(
@@ -226,6 +231,8 @@ export async function screenManuscript(
     llmCalls: 0,
     enrichmentFailures: 0,
     cacheHits: 0,
+    openalexCalls: 0,
+    openalexResolved: 0,
   };
 
   if (enrichedPipeline) {
@@ -238,9 +245,13 @@ export async function screenManuscript(
       {
         crossref: clients.crossref,
         europepmc: clients.europepmc,
+        openalex: clients.openalex,
         llm: clients.llm,
       },
-      { maxCrossrefCalls: options.maxCrossrefCalls },
+      {
+        maxCrossrefCalls: options.maxCrossrefCalls,
+        maxOpenAlexCalls: options.maxOpenAlexCalls,
+      },
     );
     allStructured = dedupeStructuredRefs([...bibReferences, ...enrichResult.references]);
     parseTrace = enrichResult.trace;
@@ -249,6 +260,8 @@ export async function screenManuscript(
     enrichmentTelemetry.llmCalls = enrichResult.telemetry.llmCalls;
     enrichmentTelemetry.enrichmentFailures = enrichResult.telemetry.enrichmentFailures;
     enrichmentTelemetry.cacheHits = externalCache?.stats.hits ?? 0;
+    enrichmentTelemetry.openalexCalls = enrichResult.telemetry.openalexCalls;
+    enrichmentTelemetry.openalexResolved = enrichResult.telemetry.openalexResolved;
     progress({
       stage: "refs_structured",
       message: `结构化参考文献：${allStructured.length} 条 (enriched)`,
@@ -256,6 +269,8 @@ export async function screenManuscript(
         llmCalls: enrichResult.telemetry.llmCalls,
         crossrefCalls: enrichResult.telemetry.crossrefCalls,
         epmcCalls: enrichResult.telemetry.epmcCalls,
+        openalexCalls: enrichResult.telemetry.openalexCalls,
+        openalexResolved: enrichResult.telemetry.openalexResolved,
         cacheHits: enrichmentTelemetry.cacheHits,
         bibHits: bibReferences.length,
       },
@@ -345,6 +360,8 @@ export async function screenManuscript(
       llmCalls: enrichmentTelemetry.llmCalls,
       cacheHits: enrichmentTelemetry.cacheHits,
       enrichmentFailures: enrichmentTelemetry.enrichmentFailures,
+      openalexCalls: enrichmentTelemetry.openalexCalls,
+      openalexResolved: enrichmentTelemetry.openalexResolved,
     },
     consequentialUseWarning: CONSEQUENTIAL_USE_WARNING,
     generatedAt: new Date().toISOString(),
@@ -370,6 +387,7 @@ export async function screenManuscript(
 interface BuiltEnrichmentClients {
   crossref?: CrossrefClient;
   europepmc?: EuropePmcClient;
+  openalex?: OpenAlexClient;
   llm?: LlmExtractionClient;
 }
 
@@ -380,9 +398,9 @@ function buildEnrichmentClients(
 ): BuiltEnrichmentClients {
   const contact = options.enrichmentContact ?? process.env.RW_CONTACT_EMAIL;
   if (!contact || !cache) {
-    // Without a contact mailto we won't hit Crossref / EPMC (the polite-pool
-    // User-Agent constructor would reject), but LLM-only enrichment can
-    // still help refs whose regex extraction failed.
+    // Without a contact mailto we won't hit Crossref / EPMC / OpenAlex (the
+    // polite-pool User-Agent constructor would reject), but LLM-only
+    // enrichment can still help refs whose regex extraction failed.
     return { llm: llmClient ?? undefined };
   }
   const http = new HttpClient({
@@ -394,6 +412,7 @@ function buildEnrichmentClients(
   return {
     crossref: new CrossrefClient(http, cache),
     europepmc: new EuropePmcClient(http, cache),
+    openalex: new OpenAlexClient(http, cache),
     llm: llmClient ?? undefined,
   };
 }

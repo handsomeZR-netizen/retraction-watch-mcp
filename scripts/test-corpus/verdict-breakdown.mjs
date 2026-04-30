@@ -85,6 +85,8 @@ function aggregate(summaries) {
       cacheHits: 0,
       enrichmentFailures: 0,
       deepseekCalls: 0,
+      openalexCalls: 0,
+      openalexResolved: 0,
     },
     pipelineVariants: {},
     perPaper: [],
@@ -127,6 +129,8 @@ function aggregate(summaries) {
     out.network.cacheHits += net.cacheHits ?? 0;
     out.network.enrichmentFailures += net.enrichmentFailures ?? 0;
     out.network.deepseekCalls += net.deepseekCalls ?? 0;
+    out.network.openalexCalls += net.openalexCalls ?? 0;
+    out.network.openalexResolved += net.openalexResolved ?? 0;
 
     out.perPaper.push({
       id: s.id,
@@ -192,6 +196,8 @@ function printDelta(beforeAgg, afterAgg) {
     ["llm calls", beforeAgg.network.llmCalls, afterAgg.network.llmCalls],
     ["crossref calls", beforeAgg.network.crossrefCalls, afterAgg.network.crossrefCalls],
     ["epmc calls", beforeAgg.network.epmcCalls, afterAgg.network.epmcCalls],
+    ["openalex calls", beforeAgg.network.openalexCalls, afterAgg.network.openalexCalls],
+    ["openalex resolved", beforeAgg.network.openalexResolved, afterAgg.network.openalexResolved],
     ["cache hits", beforeAgg.network.cacheHits, afterAgg.network.cacheHits],
   ];
   console.log(`${"metric".padEnd(22)}  ${"before".padStart(8)}  ${"after".padStart(8)}  ${"Δ".padStart(8)}`);

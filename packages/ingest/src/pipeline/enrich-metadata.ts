@@ -2,6 +2,7 @@ import type { FieldProvenance, ProvenanceMap, SourceTag } from "@rw/core/types";
 import { classifyReferenceTier } from "../extraction/confidence.js";
 import type { CrossrefClient, CrossrefWork } from "../external/crossref.js";
 import type { EpmcWork, EuropePmcClient } from "../external/europepmc.js";
+import type { OpenAlexClient } from "../external/openalex.js";
 import { looksLikeMetadataNoise } from "../extraction/validate-llm.js";
 import type { LlmExtractionClient } from "../llm-client.js";
 import type { RawReference, StructuredReference } from "../types.js";
@@ -19,7 +20,10 @@ import { buildProvenance } from "../extraction/confidence.js";
  *      conflict is recorded in `provenance.conflicts`.
  *   3. If no DOI but a high-confidence title+year: try Crossref title-search
  *      with the fusion gate (Levenshtein ≥ 0.92, year ±1). On accept, attach
- *      the Crossref DOI as a crossref-sourced field.
+ *      the Crossref DOI as a crossref-sourced field. **If Crossref rejects
+ *      or returns nothing, fall back to OpenAlex with the same fusion gate**
+ *      — OpenAlex indexes ~250M works, including many proceedings that
+ *      Crossref's title index doesn't cover.
  *   4. If still no DOI but a PMID: ask Europe PMC for the canonical record,
  *      again subject to the fusion gate.
  *
@@ -30,6 +34,7 @@ import { buildProvenance } from "../extraction/confidence.js";
 export interface EnrichmentClients {
   crossref?: CrossrefClient;
   europepmc?: EuropePmcClient;
+  openalex?: OpenAlexClient;
   llm?: LlmExtractionClient;
 }
 
@@ -42,6 +47,11 @@ export interface EnrichmentLimits {
    * pathological 200-ref bibliography from exhausting the polite pool.
    */
   maxCrossrefCalls?: number;
+  /**
+   * Cap on OpenAlex network calls per manuscript (Step 3 fallback). Same
+   * defense-in-depth rationale as Crossref. Default 60.
+   */
+  maxOpenAlexCalls?: number;
 }
 
 export interface EnrichmentTelemetry {
@@ -51,6 +61,9 @@ export interface EnrichmentTelemetry {
   enrichmentFailures: number;
   cacheHits: number;
   crossrefSkippedOverLimit: number;
+  openalexCalls: number;
+  openalexSkippedOverLimit: number;
+  openalexResolved: number;
 }
 
 export interface ParseTraceEntry {
@@ -72,6 +85,7 @@ export interface EnrichmentResult {
 
 const EXTERNAL_CONFIDENCE = 0.95;
 const DEFAULT_MAX_CROSSREF_CALLS = 60;
+const DEFAULT_MAX_OPENALEX_CALLS = 60;
 
 export async function enrichMetadata(
   candidates: StructuredReference[],
@@ -86,8 +100,12 @@ export async function enrichMetadata(
     enrichmentFailures: 0,
     cacheHits: 0,
     crossrefSkippedOverLimit: 0,
+    openalexCalls: 0,
+    openalexSkippedOverLimit: 0,
+    openalexResolved: 0,
   };
   const maxCrossrefCalls = limits.maxCrossrefCalls ?? DEFAULT_MAX_CROSSREF_CALLS;
+  const maxOpenAlexCalls = limits.maxOpenAlexCalls ?? DEFAULT_MAX_OPENALEX_CALLS;
   const trace: ParseTraceEntry[] = [];
   let working = candidates.map((r, i) => ({ ref: r, refIndex: i }));
 
@@ -167,49 +185,99 @@ export async function enrichMetadata(
     }
   }
 
-  // Step 3 — Crossref title→DOI for refs that still lack a DOI.
-  if (clients.crossref) {
+  // Step 3 — title→DOI for refs that still lack one. Crossref first, then
+  // OpenAlex as a second source. Same fusion gate (title ≥ 0.92, year ±1)
+  // applied to both — we never accept an external DOI without that
+  // agreement.
+  if (clients.crossref || clients.openalex) {
     for (const slot of working) {
       const { ref, refIndex } = slot;
       if (ref.doi) continue;
       if (!ref.title || ref.year == null) continue;
       // Only try when the local title is at least medium-confidence; otherwise
-      // we'd be querying Crossref with garbage.
+      // we'd be querying external APIs with garbage.
       const tier = classifyReferenceTier(ref);
       if (tier === "raw_only") continue;
-      if (telemetry.crossrefCalls >= maxCrossrefCalls) {
-        telemetry.crossrefSkippedOverLimit += 1;
-        continue;
+
+      // 3a — Crossref title-search.
+      let resolved: {
+        doi: string;
+        titleRatio: number;
+        yearDelta: number;
+        source: "crossref" | "openalex";
+      } | null = null;
+      if (clients.crossref) {
+        if (telemetry.crossrefCalls >= maxCrossrefCalls) {
+          telemetry.crossrefSkippedOverLimit += 1;
+        } else {
+          telemetry.crossrefCalls += 1;
+          const cr = await clients.crossref.resolveByTitle(ref.title, ref.year);
+          if (cr) {
+            resolved = {
+              doi: cr.work.doi,
+              titleRatio: cr.titleRatio,
+              yearDelta: cr.yearDelta,
+              source: "crossref",
+            };
+          } else {
+            trace.push({
+              refIndex,
+              field: "doi",
+              source: "crossref",
+              confidence: 0,
+              accepted: false,
+              reason: "crossref_title_below_threshold",
+            });
+          }
+        }
       }
-      telemetry.crossrefCalls += 1;
-      const resolved = await clients.crossref.resolveByTitle(ref.title, ref.year);
-      if (!resolved) {
+
+      // 3b — OpenAlex fallback when Crossref didn't resolve.
+      if (!resolved && clients.openalex) {
+        if (telemetry.openalexCalls >= maxOpenAlexCalls) {
+          telemetry.openalexSkippedOverLimit += 1;
+        } else {
+          telemetry.openalexCalls += 1;
+          const oa = await clients.openalex.resolveByTitle(ref.title, ref.year);
+          if (oa) {
+            resolved = {
+              doi: oa.work.doi,
+              titleRatio: oa.titleRatio,
+              yearDelta: oa.yearDelta,
+              source: "openalex",
+            };
+            telemetry.openalexResolved += 1;
+          } else {
+            trace.push({
+              refIndex,
+              field: "doi",
+              source: "openalex",
+              confidence: 0,
+              accepted: false,
+              reason: "openalex_title_below_threshold",
+            });
+          }
+        }
+      }
+
+      if (resolved) {
+        const provenance = ref.provenance ?? {};
+        provenance.doi = {
+          value: resolved.doi,
+          source: resolved.source,
+          confidence: EXTERNAL_CONFIDENCE,
+        };
+        slot.ref = { ...ref, doi: resolved.doi, provenance };
         trace.push({
           refIndex,
           field: "doi",
-          source: "crossref",
-          confidence: 0,
-          accepted: false,
-          reason: "crossref_title_below_threshold",
+          source: resolved.source,
+          confidence: EXTERNAL_CONFIDENCE,
+          accepted: true,
+          reason: `title_match_${resolved.titleRatio.toFixed(2)}_year_delta_${resolved.yearDelta}`,
+          after: resolved.doi,
         });
-        continue;
       }
-      const provenance = ref.provenance ?? {};
-      provenance.doi = {
-        value: resolved.work.doi,
-        source: "crossref",
-        confidence: EXTERNAL_CONFIDENCE,
-      };
-      slot.ref = { ...ref, doi: resolved.work.doi, provenance };
-      trace.push({
-        refIndex,
-        field: "doi",
-        source: "crossref",
-        confidence: EXTERNAL_CONFIDENCE,
-        accepted: true,
-        reason: `title_match_${resolved.titleRatio.toFixed(2)}_year_delta_${resolved.yearDelta}`,
-        after: resolved.work.doi,
-      });
     }
   }
 

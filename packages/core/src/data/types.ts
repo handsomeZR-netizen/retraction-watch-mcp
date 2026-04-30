@@ -12,7 +12,8 @@ export type SourceTag =
   | "bibtex"
   | "llm"
   | "crossref"
-  | "europepmc";
+  | "europepmc"
+  | "openalex";
 
 export interface FieldProvenance<T> {
   value: T;
@@ -271,6 +272,8 @@ export interface ManuscriptScreenResult {
     llmCalls?: number;
     cacheHits?: number;
     enrichmentFailures?: number;
+    openalexCalls?: number;
+    openalexResolved?: number;
   };
   consequentialUseWarning: string;
   generatedAt: string;

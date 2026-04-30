@@ -11,6 +11,7 @@ const SOURCE_LABEL: Record<SourceTag, string> = {
   llm: "LLM",
   crossref: "Crossref",
   europepmc: "Europe PMC",
+  openalex: "OpenAlex",
 };
 
 const SOURCE_TONE: Record<SourceTag, string> = {
@@ -21,6 +22,7 @@ const SOURCE_TONE: Record<SourceTag, string> = {
   llm: "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20",
   crossref: "bg-success/10 text-success border-success/20",
   europepmc: "bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/20",
+  openalex: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20",
 };
 
 const FIELD_LABEL: Record<keyof ProvenanceMap, string> = {
