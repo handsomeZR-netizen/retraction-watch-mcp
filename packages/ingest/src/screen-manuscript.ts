@@ -167,6 +167,10 @@ export async function screenManuscript(
   // info and column detection, then re-split. This is deterministic and
   // budget-free, so we try it BEFORE the LLM segmenter.
   let layoutAwareUsed = false;
+  // Track which fullText `split.referencesStartIndex` indexes into so the LLM
+  // tail slice below uses the matching source. If layout-aware wins, the
+  // offsets are from layoutDoc.fullText, not from extracted.fullText.
+  let activeFullText = extracted.fullText;
   if (split.needsLlmFallback && input.fileType === "pdf") {
     const layoutDoc = await extractPdfLayoutAware(input.buffer).catch(() => null);
     if (layoutDoc && layoutDoc.fullText.length > 200) {
@@ -177,6 +181,7 @@ export async function screenManuscript(
       if (split2.refs.length > split.refs.length) {
         split = split2;
         rawRefs = split2.refs;
+        activeFullText = layoutDoc.fullText;
         layoutAwareUsed = true;
       }
     }
@@ -190,8 +195,8 @@ export async function screenManuscript(
   if (split.needsLlmFallback && llmClient) {
     const tailStart = split.referencesStartIndex >= 0
       ? split.referencesStartIndex
-      : Math.max(0, extracted.fullText.length - 12_000);
-    const tail = extracted.fullText.slice(tailStart);
+      : Math.max(0, activeFullText.length - 12_000);
+    const tail = activeFullText.slice(tailStart);
     const segmented = await llmClient.segmentReferences(tail).catch(() => []);
     if (segmented.length > rawRefs.length) {
       llmSegmented = segmented.length;

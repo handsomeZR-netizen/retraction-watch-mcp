@@ -192,6 +192,16 @@ async function runParseJob(job: ParseJob): Promise<void> {
 
     const enrichmentContact =
       config.enrichment.contactEmail || process.env.RW_CONTACT_EMAIL || "";
+    // Always honor RW_USE_ENRICHED_PIPELINE=0 as a kill switch, even when a
+    // config file says enrichment is enabled. Without this short-circuit the
+    // documented env rollback (set RW_USE_ENRICHED_PIPELINE=0 to stop
+    // Crossref/EPMC/LLM enrichment traffic) is silently no-op'd because
+    // options.enrichedPipeline takes precedence over the env in
+    // screenManuscript.
+    const enrichedEnabled =
+      process.env.RW_USE_ENRICHED_PIPELINE === "0"
+        ? false
+        : config.enrichment.enabled;
     const result = await screenManuscript(
       repo,
       {
@@ -205,7 +215,7 @@ async function runParseJob(job: ParseJob): Promise<void> {
         llm,
         llmHeader: effLlm.enabled && effLlm.enableHeaderParse,
         cloudOcr: config.ocr.cloudEnabled,
-        enrichedPipeline: config.enrichment.enabled,
+        enrichedPipeline: enrichedEnabled,
         enrichmentContact: enrichmentContact || undefined,
         progress: (ev) => emit(job.manuscriptId, ev),
       },
