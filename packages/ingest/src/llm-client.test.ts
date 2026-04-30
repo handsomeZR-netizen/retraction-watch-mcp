@@ -18,13 +18,11 @@ import { DeepseekLlmClient } from "./llm-client.js";
 
 describe("DeepseekLlmClient malformed responses", () => {
   it("falls back to raw references when the model emits malformed JSON", async () => {
-    openAiMock.create.mockResolvedValueOnce({
+    openAiMock.create.mockResolvedValue({
       choices: [
         {
           message: {
-            tool_calls: [
-              { function: { arguments: '{"references": [' } },
-            ],
+            content: '{"references": [',
           },
         },
       ],

@@ -66,6 +66,92 @@ function trimToReferences(tail: string): string {
   return tail.slice(0, end);
 }
 
+// Boundary inside one giant entry where another author-year ref begins.
+// Matches `". "` followed by either:
+//   * Western author lists: "Lastname, F.,? Lastname, G.,? & Lastname, H. (YYYY)"
+//     including 2-word surnames like "Zabalza Bribián" (very common in
+//     Spanish/Portuguese citations).
+//   * Org-as-author: "Ministry of X. (YYYY)" / "Nesher Israel Cement
+//     Enterprises Ltd. (2014)".
+// Conservative: requires a trailing parenthesized year so we won't split
+// mid-title at every period.
+const SURNAME_TOKEN = "[A-Z][a-zA-Z'À-ſ\\-]+(?:\\s+[A-Z][a-zA-Z'À-ſ\\-]+){0,2}";
+const INITIALS_TAIL = "(?:,\\s+[A-Z]\\.?(?:\\s*[A-Z]\\.?)*)?";
+const ADDITIONAL_AUTHOR = `(?:,?\\s+(?:&\\s+)?${SURNAME_TOKEN}${INITIALS_TAIL})`;
+const ORG_AUTHOR =
+  "(?:[A-Z][a-zA-Z'\\-]+\\s+){1,5}(?:Ltd|Inc|Corp|Co|Foundation|Department|Ministry|Office|Bureau|Institute|Authority|Council|Agency|Association)\\.?" +
+  // Bare 2–5-char acronym orgs ("ISO", "IUCN", "WHO"). Safe because the
+  // outer regex requires `\s*\(YYYY\)` immediately after, so a stray "USA"
+  // or "NATO" mid-sentence won't trigger a split.
+  "|[A-Z]{2,5}\\.?";
+const AUTHOR_YEAR_INTERIOR_BOUNDARY_RE = new RegExp(
+  `\\.\\s+(?=(?:${SURNAME_TOKEN}${INITIALS_TAIL}${ADDITIONAL_AUTHOR}{0,7}|${ORG_AUTHOR})\\s*\\([12]\\d{3}[a-z]?\\))`,
+  "g",
+);
+
+// Each pattern describes a way a real reference can BEGIN. The cumulative
+// goal is "accept anything that plausibly starts with an author or numbering,
+// reject body text like 'Sales, Inventory) capable of …'". Patterns 1-2 cover
+// numbered styles; 3-5 cover initial-based citations (APA / Vancouver); 6
+// covers ICML/CVPR-style "Firstname Lastname, Firstname Lastname" lists; 7
+// covers CJK; 8 covers org authors.
+const REF_LIKE_HEAD_PATTERNS: RegExp[] = [
+  /^\[\d+\]\s+/, // [1] Smith J …
+  /^\d{1,3}[\.\)]\s+\S/, // 1. Smith / 1) Smith
+  // APA initials with period: "Smith, J." or "Zabalza Bribián, I." or "Smith, J. K."
+  /^[A-Z][a-zA-Z'À-ſ\-]+(?:\s+[A-Z][a-zA-Z'À-ſ\-]+){0,2},\s+[A-Z]\./,
+  // Reversed-order initials-first: "W. U. Ahmad, S. Narenthiran, …"
+  /^(?:[A-Z]\.\s*){1,3}[A-Z][a-zA-Z'À-ſ\-]+,\s+(?:[A-Z]\.\s*){1,3}[A-Z][a-zA-Z'À-ſ\-]+/,
+  // First name spelt out + comma/paren terminator: "Smith, John, Inc," or "Smith, John (2020)"
+  /^[A-Z][a-zA-Z'À-ſ\-]+(?:\s+[A-Z][a-zA-Z'À-ſ\-]+){0,2},\s+[A-Z][a-zA-Z]+\s*[\(,]/,
+  // Vancouver concatenated initials: "Smith JK." / "Smith JK," / "Smith A and Doe B"
+  /^[A-Z][a-zA-Z'À-ſ\-]+(?:\s+[A-Z][a-zA-Z'À-ſ\-]+)?\s+[A-Z]{1,3}(?:[\.,]|\s+(?:and|&)\s+)/,
+  // ML-paper style "Firstname Lastname, Firstname Lastname, …" — requires
+  // ≥3 such name pairs in the head so single phrases like "United States,
+  // Saudi Arabia, the UK" don't slip through. The repeated `\s+[A-Z][a-zA-Z'\-]+`
+  // captures 2-word combos; the third repeat anchors it as a real author list.
+  /^[A-Z][a-zA-Z'À-ſ\-]+(?:\s+[A-Z][a-zA-Z'À-ſ\-]+)?,\s+[A-Z][a-zA-Z'À-ſ\-]+(?:\s+[A-Z][a-zA-Z'À-ſ\-]+)?,\s+(?:and\s+)?[A-Z][a-zA-Z'À-ſ\-]+/,
+  // CJK author: "李明,"
+  /^[一-鿿]{2,4}[,，\s]/,
+  // Org-as-author: "Ministry of Health (2020)"
+  /^(?:[A-Z][a-z]+\s+){1,5}(?:Ltd|Inc|Corp|Foundation|Ministry|Department|Bureau|Institute|Authority|Council|Agency|Association)\b/,
+  // Bare-acronym org-as-author: "ISO. (2006)" / "IUCN. (2021)" / "WHO (2019)".
+  // Required follow-up by `(YYYY)` keeps stray mid-sentence acronyms out.
+  /^[A-Z]{2,5}\.?\s*\([12]\d{3}/,
+];
+
+function isLikelyReference(s: string): boolean {
+  // A ref must (a) have an identifying timestamp/identifier and (b) start
+  // with a recognizable author/numbering shape. The same heuristic used to
+  // happen implicitly via `length > 25 && /\d{4}/`, but that admitted body
+  // text from un-trimmed appendix sections (any paragraph with a year in it).
+  if (s.length < 30) return false;
+  const hasYear = /\b(?:19|20)\d{2}\b/.test(s);
+  const hasDoi = /10\.\d{4,9}\//.test(s);
+  const hasPmid = /\bPMID:\s*\d+/i.test(s);
+  if (!hasYear && !hasDoi && !hasPmid) return false;
+  const head = s.slice(0, 120);
+  return REF_LIKE_HEAD_PATTERNS.some((re) => re.test(head));
+}
+
+// When an entry is overlong AND contains an interior author-year boundary,
+// split it into sub-refs. Threshold of 350 is set just above the length of
+// a typical full-title APA entry — a real well-formed single ref rarely
+// contains ". Lastname, F. (YYYY)" inside its title/journal portion, since
+// the regex demands a parenthesized year right after the author block.
+function recursiveSplitOverlong(entry: string): string[] {
+  if (entry.length <= 350) return [entry];
+  const matches = [...entry.matchAll(AUTHOR_YEAR_INTERIOR_BOUNDARY_RE)];
+  if (matches.length < 1) return [entry];
+  const cuts = [0, ...matches.map((m) => (m.index ?? 0) + 1), entry.length];
+  const out: string[] = [];
+  for (let i = 0; i < cuts.length - 1; i += 1) {
+    const piece = entry.slice(cuts[i], cuts[i + 1]).trim();
+    if (piece) out.push(piece);
+  }
+  return out;
+}
+
 function splitEntries(block: string): string[] {
   const cleaned = block.replace(/\r/g, "").trim();
   const lines = cleaned.split(/\n+/);
@@ -86,13 +172,11 @@ function splitEntries(block: string): string[] {
       }
     }
     if (current.trim()) out.push(current);
-    return out
-      .map((s) => fixSplitDoi(s.replace(/\s+/g, " ").trim()))
-      .filter((s) => s.length > 25);
+    return finalizeEntries(out);
   }
 
   const authorYearOut = splitAuthorYear(lines);
-  if (authorYearOut.length >= 4) return authorYearOut;
+  if (authorYearOut.length >= 4) return finalizeEntries(authorYearOut);
 
   const flat = cleaned.replace(/\n+/g, " ").replace(/\s+/g, " ").trim();
   const inlineNumberedRe =
@@ -109,13 +193,30 @@ function splitEntries(block: string): string[] {
         ),
       );
     }
-    return out.filter((s) => s.length > 25);
+    return finalizeEntries(out);
   }
 
   const blocks = cleaned
     .split(/\n{2,}/)
     .map((b) => fixSplitDoi(b.replace(/\n/g, " ").replace(/\s+/g, " ").trim()));
-  return blocks.filter((b) => b.length > 25 && /\d{4}/.test(b));
+  return finalizeEntries(blocks);
+}
+
+// Common post-processing: for each candidate entry, run recursive split on
+// embedded author-year boundaries (catches concatenations the outer
+// splitter missed), then drop entries that don't look like references at
+// all. Without this filter, body text from un-trimmed appendix sections
+// can leak through whenever it happens to contain a 4-digit year.
+function finalizeEntries(entries: string[]): string[] {
+  const expanded: string[] = [];
+  for (const entry of entries) {
+    const cleaned = fixSplitDoi(entry.replace(/\s+/g, " ").trim());
+    if (cleaned.length <= 25) continue;
+    for (const piece of recursiveSplitOverlong(cleaned)) {
+      expanded.push(piece);
+    }
+  }
+  return expanded.filter(isLikelyReference);
 }
 
 function splitAuthorYear(rawLines: string[]): string[] {
@@ -136,6 +237,8 @@ function splitAuthorYear(rawLines: string[]): string[] {
     if (/^[A-Z][a-z]+\s+[A-Z][a-zA-Z'\-]+(?:,|\s+and\s+|\s+et\s+al)/.test(l)) return true;
     if (/^[A-Z][a-z]+\s+[A-Z][a-zA-Z'\-]+\.\s/.test(l)) return true;
     if (/^[\u4e00-\u9fff]{2,4}[,，\s]/.test(l)) return true;
+    // Reversed-order initials-first: "W. U. Ahmad, S. Narenthiran, ..."
+    if (/^(?:[A-Z]\.\s*){1,3}[A-Z][a-zA-Z'\-]+,\s+(?:[A-Z]\.\s*){1,3}[A-Z]/.test(l)) return true;
     return false;
   };
 
