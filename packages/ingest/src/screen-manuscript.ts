@@ -141,11 +141,33 @@ export async function screenManuscript(
   // \bibitem block could still leave references unparsed; merging both
   // sources avoids silently dropping them. Duplicates collapse later via
   // structured DOI/title comparison in the screening loop.
-  const rawRefs: RawReference[] = locateAndSplitReferences(extracted);
+  const split = locateAndSplitReferences(extracted);
+  let rawRefs: RawReference[] = split.refs;
+
+  // LLM-segmenter fallback: when the regex layer found nothing or almost
+  // nothing (typical for double-column PDFs whose "References" header was
+  // dropped by reading order), ask the LLM to identify ref boundaries
+  // directly in the raw text. Strictly opt-in (requires llmClient); fails
+  // open (returns 0 refs) if the LLM is unreachable.
+  let llmSegmented = 0;
+  if (split.needsLlmFallback && llmClient) {
+    const tailStart = split.referencesStartIndex >= 0
+      ? split.referencesStartIndex
+      : Math.max(0, extracted.fullText.length - 12_000);
+    const tail = extracted.fullText.slice(tailStart);
+    const segmented = await llmClient.segmentReferences(tail).catch(() => []);
+    if (segmented.length > rawRefs.length) {
+      llmSegmented = segmented.length;
+      rawRefs = segmented;
+    }
+  }
+
   progress({
     stage: "refs_segmented",
-    message: `参考文献分割：${bibReferences.length + rawRefs.length} 条`,
-    detail: { count: bibReferences.length + rawRefs.length },
+    message: llmSegmented > 0
+      ? `参考文献分割：${bibReferences.length + rawRefs.length} 条（LLM 兜底切出 ${llmSegmented}）`
+      : `参考文献分割：${bibReferences.length + rawRefs.length} 条`,
+    detail: { count: bibReferences.length + rawRefs.length, llmSegmented },
   });
 
   let allStructured: StructuredReference[];

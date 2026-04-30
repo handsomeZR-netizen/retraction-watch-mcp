@@ -16,15 +16,45 @@ const SECTION_HEADERS = [
   "Literature Cited",
 ];
 
-export function locateAndSplitReferences(doc: ExtractedDocument): RawReference[] {
+export interface SplitResult {
+  refs: RawReference[];
+  /**
+   * True if the regex layer either failed to locate a References section
+   * entirely, or located one but split out very few candidates. The caller
+   * (screen-manuscript) checks this and may invoke an LLM-based segmenter
+   * over the raw text as a fallback. The threshold is intentionally low so
+   * we don't fire LLM for every paper that happens to have a small ref list.
+   */
+  needsLlmFallback: boolean;
+  /**
+   * Where in `doc.fullText` the splitter believes the References section
+   * starts. -1 if neither header detection nor marker fallback found anything.
+   * The LLM segmenter uses this (or the trailing 8 KB if -1) as its input
+   * window so it doesn't have to digest the entire paper.
+   */
+  referencesStartIndex: number;
+}
+
+const LLM_FALLBACK_MIN_REFS = 3;
+
+export function locateAndSplitReferences(doc: ExtractedDocument): SplitResult {
   const text = doc.fullText;
-  if (!text) return [];
-  const start = findReferencesStart(text);
-  if (start < 0) return [];
+  if (!text) return { refs: [], needsLlmFallback: false, referencesStartIndex: -1 };
+  let start = findReferencesStart(text);
+  if (start < 0) start = findReferencesByMarker(text);
+  if (start < 0) {
+    return { refs: [], needsLlmFallback: true, referencesStartIndex: -1 };
+  }
   const tail = text.slice(start);
-  const block = trimToReferences(tail);
+  const trimmed = trimToReferences(tail);
+  const block = unwrapBlobReferences(trimmed);
   const entries = splitEntries(block);
-  return entries.map((raw, index) => ({ raw: raw.trim(), index }));
+  const refs = entries.map((raw, index) => ({ raw: raw.trim(), index }));
+  return {
+    refs,
+    needsLlmFallback: refs.length < LLM_FALLBACK_MIN_REFS,
+    referencesStartIndex: start,
+  };
 }
 
 function findReferencesStart(text: string): number {
@@ -361,4 +391,70 @@ function heuristicJournal(text: string): string | null {
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Header-less fallback: when `findReferencesStart` failed (typical for
+ * double-column PDFs whose "References" header was eaten by column-reading
+ * order), scan the trailing portion of the document for a sustained
+ * numbered-reference marker pattern and return its starting offset.
+ *
+ * Conservatism guards:
+ *  - Only the last 50% of the document is considered (refs are always at the
+ *    end; biasing here avoids matching e.g. "[1]" inside the introduction's
+ *    own citations).
+ *  - Requires ≥3 markers numbered roughly monotonically within a 4 KB window
+ *    (so a single stray bracket doesn't qualify).
+ */
+export function findReferencesByMarker(text: string): number {
+  if (text.length < 400) return -1;
+  const tailStart = Math.floor(text.length * 0.5);
+  const tail = text.slice(tailStart);
+
+  const markerRe = /(?:^|[\s\)\]\.])(?:\[(\d{1,3})\]|(\d{1,3})\.)\s+(?=[A-Z一-鿿])/g;
+  type Hit = { idx: number; n: number };
+  const hits: Hit[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = markerRe.exec(tail)) !== null) {
+    const n = Number(match[1] ?? match[2]);
+    if (Number.isFinite(n) && n >= 1 && n <= 999) {
+      hits.push({ idx: match.index, n });
+    }
+  }
+  if (hits.length < 3) return -1;
+
+  // Find the first hit that begins a monotonically-increasing run of ≥3
+  // markers within a 4 KB window. Allow some tolerance: numbering may skip
+  // (e.g. "1, 3, 4" if pdf reading dropped a line), but must overall ascend.
+  for (let i = 0; i + 2 < hits.length; i += 1) {
+    const a = hits[i];
+    const b = hits[i + 1];
+    const c = hits[i + 2];
+    if (c.idx - a.idx > 4000) continue;
+    if (a.n < b.n && b.n < c.n && a.n <= 5) {
+      // anchored on a small starting number (1–5) so we don't latch onto a
+      // citation cluster like "[34], [35], [36]" inside the discussion.
+      return tailStart + a.idx;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Pre-processing step before `splitEntries` runs: when unpdf returns the
+ * References section as a single line with no internal `\n`, the line-based
+ * splitter paths can't find boundaries. Insert a `\n` before each `<digit>.`
+ * or `[<digit>]` marker that's followed by a capital letter.
+ *
+ * Only triggers when the block is "obviously a blob": >3 KB long, near-zero
+ * newline density, and ≥5 numbered markers detectable. Otherwise pass through.
+ */
+export function unwrapBlobReferences(block: string): string {
+  if (block.length < 3000) return block;
+  const newlines = (block.match(/\n/g) ?? []).length;
+  if (newlines / block.length > 0.001) return block;
+  const markerRe = / (\d{1,3}\.\s+|\[\d+\]\s+)(?=[A-Z一-鿿])/g;
+  const matches = block.match(markerRe);
+  if (!matches || matches.length < 5) return block;
+  return block.replace(markerRe, (m) => "\n" + m.trimStart());
 }
