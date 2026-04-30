@@ -3,7 +3,7 @@
  * the LLM result cache mixes this into the key so a prompt edit invalidates
  * stale cached responses.
  */
-export const REFS_EXTRACTION_PROMPT_VERSION = "v2";
+export const REFS_EXTRACTION_PROMPT_VERSION = "v3";
 
 export const REFS_EXTRACTION_SYSTEM_PROMPT = `你是一个学术参考文献结构化抽取引擎。
 

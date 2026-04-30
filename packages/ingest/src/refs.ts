@@ -1,4 +1,5 @@
 import { extractDoi, extractPmid, extractYear, YEAR_REGEX } from "@rw/core";
+import { looksLikeMetadataNoise } from "./extraction/validate-llm.js";
 import type {
   ExtractedDocument,
   RawReference,
@@ -351,6 +352,10 @@ function heuristicTitle(text: string): string | null {
   const firstChunk = after.split(/[\.\?]\s+(?=[A-Z一-鿿])/)[0] ?? after;
   const cleaned = firstChunk.replace(/\s+/g, " ").trim();
   if (!cleaned) return null;
+  // Reject metadata-noise candidates ("57(6): 365-88", "1-4.", etc.) so the
+  // downstream Crossref title-search step doesn't waste a request on garbage.
+  // The LLM merge step will fill in a real title later when one is available.
+  if (looksLikeMetadataNoise(cleaned)) return null;
   return cleaned.length > 250 ? cleaned.slice(0, 250) : cleaned;
 }
 

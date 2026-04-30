@@ -2,6 +2,7 @@ import type { FieldProvenance, ProvenanceMap, SourceTag } from "@rw/core/types";
 import { classifyReferenceTier } from "../extraction/confidence.js";
 import type { CrossrefClient, CrossrefWork } from "../external/crossref.js";
 import type { EpmcWork, EuropePmcClient } from "../external/europepmc.js";
+import { looksLikeMetadataNoise } from "../extraction/validate-llm.js";
 import type { LlmExtractionClient } from "../llm-client.js";
 import type { RawReference, StructuredReference } from "../types.js";
 import { buildProvenance } from "../extraction/confidence.js";
@@ -108,9 +109,16 @@ export async function enrichMetadata(
         // collide between unresolvedRaw and the lowConfidenceTargets array).
         const slot = working.find(({ ref }) => ref.raw === lr.raw);
         if (!slot) continue;
+        // Final-pass noise sanity check on the merged title: covers the case
+        // where slot.ref.title (from heuristic) and lr.title (from a stale
+        // pre-fix LLM cache hit) are both metadata noise. We don't want a
+        // garbage title here because step 3 (Crossref title-search) blindly
+        // queries it.
+        const slotTitle = slot.ref.title && !looksLikeMetadataNoise(slot.ref.title) ? slot.ref.title : null;
+        const llmTitle = lr.title && !looksLikeMetadataNoise(lr.title) ? lr.title : null;
         const merged: StructuredReference = {
           ...slot.ref,
-          title: slot.ref.title ?? lr.title,
+          title: slotTitle ?? llmTitle,
           authors: slot.ref.authors.length > 0 ? slot.ref.authors : lr.authors,
           year: slot.ref.year ?? lr.year,
           doi: slot.ref.doi ?? lr.doi,
