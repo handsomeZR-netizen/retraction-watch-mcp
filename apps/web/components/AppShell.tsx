@@ -44,13 +44,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Public routes: minimal layout (no sidebar, no header). The /share/[token]
-  // pages need full width to render the result; auth pages stay in a centered
-  // narrow column.
+  // pages need full width to render the result; the /login page renders a
+  // 2-column brand + form layout that needs ~5xl room; other auth pages
+  // (register / forgot / reset) stay in a centered narrow column.
   if (isPublicRoute(pathname)) {
     if (pathname.startsWith("/share/")) {
       return (
         <div className="min-h-screen px-4 py-8 max-w-5xl mx-auto">{children}</div>
       );
+    }
+    if (pathname === "/login") {
+      return <div className="min-h-screen px-4 py-10">{children}</div>;
     }
     return (
       <div className="min-h-screen flex items-center justify-center px-4 py-10">
