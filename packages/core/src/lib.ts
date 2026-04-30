@@ -65,4 +65,8 @@ export type {
   ManuscriptScreenResult,
   ScreenedReference,
   AuthorScreenResult,
+  SourceTag,
+  FieldProvenance,
+  ProvenanceMap,
+  ParseTraceEntry,
 } from "./data/types.js";
