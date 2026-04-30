@@ -85,7 +85,7 @@ export default function HomePage() {
 
   return (
     <div className="space-y-8">
-      <section className="grid lg:grid-cols-[1.4fr_1fr] gap-8 items-start">
+      <section className="grid lg:grid-cols-[1.4fr_1fr] gap-8 items-start lg:items-stretch">
         <div className="space-y-6">
           {data ? (
             <ScopeBanner
@@ -111,8 +111,9 @@ export default function HomePage() {
           )}
           <HomeIntroCard />
         </div>
-        <div className="lg:sticky lg:top-20">
+        <div className="lg:sticky lg:top-20 lg:h-full">
           <Dropzone
+            className="lg:h-full"
             onDrop={onDrop}
             busy={sessions.active.some((s) => s.status === "uploading" || s.status === "parsing")}
             hint={

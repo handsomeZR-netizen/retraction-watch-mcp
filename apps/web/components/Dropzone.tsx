@@ -9,11 +9,12 @@ interface DropzoneProps {
   onDrop: (files: File[]) => void;
   busy: boolean;
   hint?: string;
+  className?: string;
 }
 
 const ACCEPTED_EXT = /\.(pdf|docx|tex|zip)$/i;
 
-export function Dropzone({ onDrop, busy, hint }: DropzoneProps) {
+export function Dropzone({ onDrop, busy, hint, className }: DropzoneProps) {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     multiple: true,
@@ -50,10 +51,11 @@ export function Dropzone({ onDrop, busy, hint }: DropzoneProps) {
         "hover:border-foreground/30 hover:bg-accent/30",
         isDragActive && "border-foreground bg-accent/50 scale-[1.01]",
         busy && "cursor-not-allowed opacity-70",
+        className,
       )}
     >
       <input {...getInputProps()} />
-      <div className="flex flex-col items-center gap-4">
+      <div className="flex h-full flex-col items-center justify-center gap-4">
         <div
           className={cn(
             "grid h-14 w-14 place-items-center rounded-full transition-colors",
