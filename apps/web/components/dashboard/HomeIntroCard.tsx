@@ -51,23 +51,23 @@ export function HomeIntroCard() {
         {STEPS.map((step) => (
           <li
             key={step.index}
-            className="px-4 py-2.5 flex items-center gap-3 min-w-0"
+            className="px-4 py-2.5 flex items-start gap-3 min-w-0"
           >
             <span
-              className="grid h-6 w-6 place-items-center rounded-full bg-muted text-muted-foreground text-[11px] font-semibold shrink-0"
+              className="grid h-6 w-6 place-items-center rounded-full bg-muted text-muted-foreground text-[11px] font-semibold shrink-0 mt-0.5"
               aria-hidden
             >
               {step.index}
             </span>
             <step.icon
-              className="h-4 w-4 text-muted-foreground shrink-0"
+              className="h-4 w-4 text-muted-foreground shrink-0 mt-1"
               weight="duotone"
             />
             <div className="min-w-0 flex-1">
               <div className="text-sm font-medium leading-tight">
                 {step.title}
               </div>
-              <div className="text-xs text-muted-foreground mt-0.5 leading-snug">
+              <div className="text-xs text-muted-foreground mt-1 leading-snug">
                 {step.hint}
               </div>
             </div>
