@@ -9,6 +9,7 @@ import {
   GoogleLogo,
   Lightning,
   MagnifyingGlass,
+  Microscope,
   ShieldCheck,
   SignIn,
 } from "@phosphor-icons/react";
@@ -175,8 +176,8 @@ function BrandPanel() {
     <div className="hidden md:flex flex-col justify-center space-y-8 px-2">
       <div className="space-y-3">
         <div className="flex items-center gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-md bg-primary text-primary-foreground font-bold">
-            RW
+          <span className="grid h-10 w-10 place-items-center rounded-md bg-primary text-primary-foreground">
+            <Microscope className="h-5 w-5" weight="duotone" />
           </span>
           <span className="text-xl font-semibold tracking-tight">RW Screen</span>
         </div>

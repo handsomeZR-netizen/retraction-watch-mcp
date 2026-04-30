@@ -16,6 +16,7 @@ import {
   FolderPlus,
   House,
   MagnifyingGlass,
+  Microscope,
   PlusCircle,
   ShieldStar,
   SidebarSimple,
@@ -217,10 +218,10 @@ export function AppSidebar() {
         <div className="p-2 border-b border-border flex flex-col items-center gap-2">
           <Link
             href="/"
-            className="grid h-9 w-9 place-items-center rounded-md bg-foreground text-background text-[11px] font-bold tracking-wider"
+            className="grid h-9 w-9 place-items-center rounded-md bg-foreground text-background"
             title="RW Screen"
           >
-            RW
+            <Microscope className="h-5 w-5" weight="duotone" />
           </Link>
           <Button
             variant="ghost"
@@ -266,9 +267,9 @@ export function AppSidebar() {
           <Link href="/" className="flex items-center gap-2 px-1.5 min-w-0">
             <span
               aria-hidden
-              className="grid h-7 w-7 place-items-center rounded-md bg-foreground text-background text-[11px] font-bold tracking-wider shrink-0"
+              className="grid h-7 w-7 place-items-center rounded-md bg-foreground text-background shrink-0"
             >
-              RW
+              <Microscope className="h-4 w-4" weight="duotone" />
             </span>
             <span className="text-sm font-semibold tracking-tight truncate">RW Screen</span>
           </Link>

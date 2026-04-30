@@ -51,16 +51,16 @@ export function HomeIntroCard() {
         {STEPS.map((step) => (
           <li
             key={step.index}
-            className="px-4 py-3 flex items-start gap-3 min-w-0"
+            className="px-4 py-2.5 flex items-center gap-3 min-w-0"
           >
             <span
-              className="grid h-7 w-7 place-items-center rounded-full bg-muted text-muted-foreground text-xs font-semibold shrink-0"
+              className="grid h-6 w-6 place-items-center rounded-full bg-muted text-muted-foreground text-[11px] font-semibold shrink-0"
               aria-hidden
             >
               {step.index}
             </span>
             <step.icon
-              className="h-4 w-4 mt-1 text-muted-foreground shrink-0"
+              className="h-4 w-4 text-muted-foreground shrink-0"
               weight="duotone"
             />
             <div className="min-w-0 flex-1">
@@ -77,22 +77,15 @@ export function HomeIntroCard() {
 
       <Link
         href="/settings"
-        className="block px-4 py-2.5 border-t border-border bg-muted/30 hover:bg-accent/40 transition-colors"
+        className="flex items-center justify-between gap-3 px-4 py-2 border-t border-border bg-muted/30 hover:bg-accent/40 transition-colors"
       >
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-xs font-medium text-foreground">
-              本版本：双栏 PDF 智能切分 + DOI 反查默认开
-            </div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">
-              在设置中填联系邮箱即可解锁 Crossref / Europe PMC 反查
-            </div>
-          </div>
-          <ArrowRight
-            className="h-3.5 w-3.5 text-muted-foreground shrink-0"
-            weight="bold"
-          />
-        </div>
+        <span className="text-xs text-muted-foreground truncate">
+          填联系邮箱解锁 Crossref / EPMC 反查
+        </span>
+        <ArrowRight
+          className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+          weight="bold"
+        />
       </Link>
     </Card>
   );

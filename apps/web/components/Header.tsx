@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { GithubLogo } from "@phosphor-icons/react";
+import { GithubLogo, Microscope } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { HealthIndicator } from "@/components/HealthIndicator";
@@ -31,9 +31,9 @@ export function Header({ sidebarMode = false }: { sidebarMode?: boolean }) {
           <Link href="/" className="flex items-center gap-2.5">
             <span
               aria-hidden
-              className="grid h-7 w-7 place-items-center rounded-md bg-foreground text-background text-[11px] font-bold tracking-wider"
+              className="grid h-7 w-7 place-items-center rounded-md bg-foreground text-background"
             >
-              RW
+              <Microscope className="h-4 w-4" weight="duotone" />
             </span>
             <span className="text-base font-semibold tracking-tight">
               RW Screen
