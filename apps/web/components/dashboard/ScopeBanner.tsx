@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import {
   Database,
+  GlobeHemisphereWest,
   House,
   Lightning,
   UsersThree,
@@ -31,6 +32,10 @@ interface Props {
     source: LlmSource;
     hasApiKey: boolean;
   };
+  enrichment?: {
+    enabled: boolean;
+    hasContactEmail: boolean;
+  };
   source: { rowCount: number; generatedOn: string | null } | null;
   onLlmChanged?: () => void | Promise<void>;
 }
@@ -46,6 +51,7 @@ export function ScopeBanner({
   user,
   workspace,
   llm,
+  enrichment,
   source,
   onLlmChanged,
 }: Props) {
@@ -203,6 +209,23 @@ export function ScopeBanner({
               <span className="text-muted-foreground ml-1">· {source.generatedOn}</span>
             )}
           </Badge>
+        )}
+
+        {enrichment?.enabled && !enrichment.hasContactEmail && (
+          <Link href="/settings">
+            <Badge
+              variant="muted"
+              className="h-7 cursor-pointer hover:bg-accent transition-colors border-warning/40 bg-warning/5"
+              title="Crossref / Europe PMC 反查 DOI 已启用，但未填联系邮箱 — 反查会被跳过。点击去配置"
+            >
+              <GlobeHemisphereWest
+                className="h-3.5 w-3.5 text-warning"
+                weight="duotone"
+              />
+              <span>DOI 反查未启用</span>
+              <span className="text-muted-foreground ml-1">· 缺联系邮箱</span>
+            </Badge>
+          </Link>
         )}
       </div>
     </div>

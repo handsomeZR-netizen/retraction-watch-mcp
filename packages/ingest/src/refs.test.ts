@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { heuristicStructureReferences, locateAndSplitReferences, regexStructure } from "./refs.js";
+import {
+  findReferencesByMarker,
+  heuristicStructureReferences,
+  locateAndSplitReferences,
+  regexStructure,
+  unwrapBlobReferences,
+} from "./refs.js";
 import type { ExtractedDocument } from "./types.js";
 
 describe("reference extraction fallback", () => {
@@ -21,7 +27,7 @@ describe("reference extraction fallback", () => {
       warnings: [],
     };
 
-    const refs = locateAndSplitReferences(doc);
+    const { refs } = locateAndSplitReferences(doc);
     const { structured, unresolved } = regexStructure(refs);
     const fallback = heuristicStructureReferences(unresolved);
 
@@ -60,7 +66,7 @@ describe("reference extraction fallback", () => {
       ocrUsed: false,
       warnings: [],
     };
-    const refs = locateAndSplitReferences(doc);
+    const { refs } = locateAndSplitReferences(doc);
     // Three padding entries + 3 split sub-refs = 6.
     expect(refs.length).toBeGreaterThanOrEqual(6);
     const haystack = refs.map((r) => r.raw).join("\n");
@@ -99,7 +105,7 @@ describe("reference extraction fallback", () => {
       ocrUsed: false,
       warnings: [],
     };
-    const refs = locateAndSplitReferences(doc);
+    const { refs } = locateAndSplitReferences(doc);
     expect(refs.map((r) => r.raw)).not.toContain(bodyTextLeak);
     // The 4 real refs should still be present.
     expect(refs.length).toBe(4);
@@ -129,7 +135,7 @@ describe("reference extraction fallback", () => {
       ocrUsed: false,
       warnings: [],
     };
-    const refs = locateAndSplitReferences(doc);
+    const { refs } = locateAndSplitReferences(doc);
     const haystack = refs.map((r) => r.raw).join("\n---\n");
     // 3 padding entries + 4 split sub-refs from the concatenation.
     expect(refs.length).toBeGreaterThanOrEqual(7);
@@ -137,5 +143,84 @@ describe("reference extraction fallback", () => {
     expect(haystack).toMatch(/^International Food Policy/m);
     expect(haystack).toMatch(/^ISO\.\s*\(2006\)/m);
     expect(haystack).toMatch(/^IUCN\.\s*\(2021\)/m);
+  });
+});
+
+describe("LLM-fallback signals", () => {
+  it("locateAndSplitReferences returns needsLlmFallback when no References header is found", () => {
+    // Mimics a double-column PDF where unpdf's reading order ate the header.
+    // Body still contains numbered citation markers but no "References".
+    const garbledTail = [
+      "[1] Smith J, Doe R. Paper one. Journal A 2020;1:1.",
+      "[2] Lee K. Paper two. Journal B 2021;2:2.",
+      "[3] Patel R. Paper three. Journal C 2022;3:3.",
+      "[4] Wong Y. Paper four. Journal D 2023;4:4.",
+      "[5] Garcia M. Paper five. Journal E 2024;5:5.",
+    ].join("\n");
+    const doc: ExtractedDocument = {
+      fullText:
+        "Title\n\nIntroduction body…\n\n" +
+        "Filler text. ".repeat(200) +
+        "\n" +
+        garbledTail,
+      pages: [],
+      metadata: {},
+      source: "pdf",
+      ocrUsed: false,
+      warnings: [],
+    };
+    const result = locateAndSplitReferences(doc);
+    // Header-by-marker fallback should locate the [1] anchor and split.
+    expect(result.referencesStartIndex).toBeGreaterThan(0);
+    expect(result.refs.length).toBeGreaterThanOrEqual(3);
+    expect(result.needsLlmFallback).toBe(false);
+  });
+
+  it("returns needsLlmFallback=true when neither header nor markers exist", () => {
+    const doc: ExtractedDocument = {
+      fullText: "A paper with no references section at all. Lorem ipsum dolor sit amet ".repeat(20),
+      pages: [],
+      metadata: {},
+      source: "pdf",
+      ocrUsed: false,
+      warnings: [],
+    };
+    const result = locateAndSplitReferences(doc);
+    expect(result.refs.length).toBe(0);
+    expect(result.needsLlmFallback).toBe(true);
+    expect(result.referencesStartIndex).toBe(-1);
+  });
+
+  it("findReferencesByMarker locks onto the first sustained run of low-numbered markers", () => {
+    const text =
+      "Discussion: prior work [34] noted X, and [35] explored Y, so we [36] tested Z. " +
+      // ↑ this run is the discussion's own citations — must NOT match (numbers too high)
+      "Filler ".repeat(500) +
+      "1. Anderson A. First ref. Journal A 2018;1:1. " +
+      "2. Berry B. Second ref. Journal B 2019;2:2. " +
+      "3. Carlos C. Third ref. Journal C 2020;3:3.";
+    const idx = findReferencesByMarker(text);
+    expect(idx).toBeGreaterThan(0);
+    // The match should land at or after "1. Anderson", not at "[34]".
+    expect(text.slice(idx, idx + 20)).toMatch(/^\s*1\.\s+Anderson/);
+  });
+
+  it("unwrapBlobReferences inserts newlines before numbered markers in a single-line blob", () => {
+    // Real failure mode: unpdf returns refs as one long line.
+    // Each entry padded to ~70 chars × 50 = 3500+ chars, satisfying the
+    // length threshold.
+    const blob =
+      "References " +
+      Array.from({ length: 50 }, (_, i) => {
+        const n = i + 1;
+        return ` ${n}. Author${n} A. Title that is reasonably descriptive number ${n}. Journal X 202${i % 10}; ${n}: ${100 + n}-${110 + n}.`;
+      }).join("");
+    expect(blob.length).toBeGreaterThan(3000);
+    expect((blob.match(/\n/g) ?? []).length).toBe(0);
+    const unwrapped = unwrapBlobReferences(blob);
+    expect((unwrapped.match(/\n/g) ?? []).length).toBeGreaterThanOrEqual(50);
+    // Each line after the split should start with its marker.
+    expect(unwrapped).toMatch(/\n1\. Author1/);
+    expect(unwrapped).toMatch(/\n50\. Author50/);
   });
 });

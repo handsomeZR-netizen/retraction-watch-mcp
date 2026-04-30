@@ -11,6 +11,7 @@ import {
   Clock,
   Sparkle,
   TrashSimple,
+  GlobeHemisphereWest,
   type Icon,
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
@@ -32,13 +33,15 @@ interface PublicConfig {
   };
   ocr: { cloudEnabled: boolean };
   retention: { keepUploads: boolean; keepHours: number };
+  enrichment: { enabled: boolean; contactEmail: string };
 }
 
 type Action =
   | { type: "set"; config: PublicConfig }
   | { type: "patchLlm"; partial: Partial<PublicConfig["llm"]> }
   | { type: "patchOcr"; partial: Partial<PublicConfig["ocr"]> }
-  | { type: "patchRetention"; partial: Partial<PublicConfig["retention"]> };
+  | { type: "patchRetention"; partial: Partial<PublicConfig["retention"]> }
+  | { type: "patchEnrichment"; partial: Partial<PublicConfig["enrichment"]> };
 
 function reducer(state: PublicConfig | null, action: Action): PublicConfig | null {
   if (action.type === "set") return action.config;
@@ -49,6 +52,8 @@ function reducer(state: PublicConfig | null, action: Action): PublicConfig | nul
     return { ...state, ocr: { ...state.ocr, ...action.partial } };
   if (action.type === "patchRetention")
     return { ...state, retention: { ...state.retention, ...action.partial } };
+  if (action.type === "patchEnrichment")
+    return { ...state, enrichment: { ...state.enrichment, ...action.partial } };
   return state;
 }
 
@@ -201,6 +206,47 @@ export default function SettingsPage() {
             <code className="ml-1 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]">
               ~/.config/rw-screen/config.json
             </code>
+          </p>
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        icon={GlobeHemisphereWest}
+        title="外源元数据增强"
+        sub="启用后参考文献会调用 Crossref / Europe PMC 反查 DOI，显著提升双栏 PDF 的命中率。需要填一个联系邮箱（Crossref polite pool 要求）"
+      >
+        <ToggleRow
+          label="启用 Crossref / Europe PMC 反查 DOI"
+          checked={config.enrichment.enabled}
+          onChange={(v) => {
+            dispatch({ type: "patchEnrichment", partial: { enabled: v } });
+            void save({ enrichment: { ...config.enrichment, enabled: v } });
+          }}
+        />
+        <div className="space-y-1.5">
+          <Label htmlFor="contactEmail">联系邮箱（Crossref polite pool）</Label>
+          <Input
+            id="contactEmail"
+            type="email"
+            placeholder="ops@example.com"
+            value={config.enrichment.contactEmail}
+            onChange={(e) =>
+              dispatch({
+                type: "patchEnrichment",
+                partial: { contactEmail: e.target.value },
+              })
+            }
+            onBlur={(e) =>
+              void save({
+                enrichment: {
+                  ...config.enrichment,
+                  contactEmail: e.target.value,
+                },
+              })
+            }
+          />
+          <p className="text-[11px] text-muted-foreground">
+            留空则跳过 Crossref / EPMC 反查（不会降级匿名访问）。建议填一个能联系到管理员的邮箱。
           </p>
         </div>
       </SettingsCard>

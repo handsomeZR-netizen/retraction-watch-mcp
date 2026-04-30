@@ -45,6 +45,10 @@ interface Dashboard {
     source: "user" | "env" | "config" | "default";
     hasApiKey: boolean;
   };
+  enrichment: {
+    enabled: boolean;
+    hasContactEmail: boolean;
+  };
   source: { rowCount: number; generatedOn: string | null } | null;
 }
 
@@ -90,6 +94,7 @@ export default function HomePage() {
               }}
               workspace={data.workspace}
               llm={data.llm}
+              enrichment={data.enrichment}
               source={data.source}
               onLlmChanged={loadDashboard}
             />

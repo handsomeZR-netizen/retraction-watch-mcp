@@ -17,6 +17,10 @@ export interface AppConfig {
     keepUploads: boolean;
     keepHours: number;
   };
+  enrichment: {
+    enabled: boolean;
+    contactEmail: string;
+  };
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -25,7 +29,7 @@ const DEFAULT_CONFIG: AppConfig = {
     baseUrl: "https://api.deepseek.com/v1",
     apiKey: "",
     model: "deepseek-v4-flash",
-    enableHeaderParse: false,
+    enableHeaderParse: true,
   },
   ocr: {
     cloudEnabled: false,
@@ -33,6 +37,10 @@ const DEFAULT_CONFIG: AppConfig = {
   retention: {
     keepUploads: false,
     keepHours: 24,
+  },
+  enrichment: {
+    enabled: true,
+    contactEmail: "",
   },
 };
 
@@ -118,6 +126,10 @@ function mergeConfig(raw: Partial<AppConfig>): AppConfig {
       ...DEFAULT_CONFIG.retention,
       ...(raw.retention ?? {}),
     },
+    enrichment: {
+      ...DEFAULT_CONFIG.enrichment,
+      ...(raw.enrichment ?? {}),
+    },
   };
 }
 
@@ -130,7 +142,14 @@ function envOverrides(): Partial<AppConfig> {
       apiKey: (process.env.DEEPSAPI_API_KEY ?? process.env.RW_LLM_API_KEY ?? "").trim(),
       baseUrl: process.env.RW_LLM_BASE_URL ?? DEFAULT_CONFIG.llm.baseUrl,
       model: process.env.RW_LLM_MODEL ?? DEFAULT_CONFIG.llm.model,
-      enableHeaderParse: false,
+      enableHeaderParse: true,
+    };
+  }
+  if (process.env.RW_CONTACT_EMAIL || process.env.RW_USE_ENRICHED_PIPELINE === "0") {
+    overrides.enrichment = {
+      ...DEFAULT_CONFIG.enrichment,
+      enabled: process.env.RW_USE_ENRICHED_PIPELINE !== "0",
+      contactEmail: (process.env.RW_CONTACT_EMAIL ?? "").trim(),
     };
   }
   return overrides;
