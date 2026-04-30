@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { GithubLogo, Microscope } from "@phosphor-icons/react";
+import { usePathname, useRouter } from "next/navigation";
+import { ArrowLeft, Microscope } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { HealthIndicator } from "@/components/HealthIndicator";
 import { UserMenu } from "@/components/UserMenu";
 import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
@@ -19,6 +18,18 @@ const NAV = [
 
 export function Header({ sidebarMode = false }: { sidebarMode?: boolean }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const showBack = pathname !== "/";
+
+  function goBack() {
+    // Prefer in-app history when there is one; fall back to home.
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/");
+    }
+  }
+
   return (
     <header className="sticky top-0 z-30 w-full border-b border-border/40 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div
@@ -58,20 +69,21 @@ export function Header({ sidebarMode = false }: { sidebarMode?: boolean }) {
           </nav>
         )}
 
-        <div className={cn("flex items-center gap-2", sidebarMode ? "ml-auto" : "ml-auto")}>
+        {showBack && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={goBack}
+            className="gap-1.5 text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" weight="bold" />
+            返回
+          </Button>
+        )}
+
+        <div className="flex items-center gap-2 ml-auto">
           <WorkspaceSwitcher />
           <HealthIndicator />
-          <Button variant="ghost" size="icon" asChild>
-            <a
-              href="https://github.com/handsomeZR-netizen/retraction-watch-mcp"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="GitHub"
-            >
-              <GithubLogo className="h-[1.1rem] w-[1.1rem]" weight="duotone" />
-            </a>
-          </Button>
-          <ThemeToggle />
           <UserMenu />
         </div>
       </div>
