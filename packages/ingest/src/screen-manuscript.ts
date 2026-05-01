@@ -119,8 +119,22 @@ export async function screenManuscript(
   // Open the external cache up-front so the LLM client can reuse it for
   // structured-ref result caching even on legacy paths. The same instance is
   // later threaded into Crossref/EPMC clients when enriched is on.
+  //
+  // Path priority: explicit option → RW_APP_DB_DIR (production: persistent
+  // /config volume) → cwd (dev). The cwd default cannot work in the docker
+  // standalone build because cwd is /app/apps/web, which is read-only build
+  // artifact, so mkdir for the cache file fails with EACCES. The
+  // RW_APP_DB_DIR env is already set in docker-compose.yml to /config, the
+  // same persistent volume that hosts app.sqlite — the perfect place to put
+  // a long-lived external-cache.sqlite alongside it.
+  const externalCacheDir =
+    options.enrichmentCachePath
+      ? null
+      : process.env.RW_APP_DB_DIR && process.env.RW_APP_DB_DIR.length > 0
+        ? process.env.RW_APP_DB_DIR
+        : join(process.cwd(), ".local-app-db");
   const externalCachePath =
-    options.enrichmentCachePath ?? join(process.cwd(), ".local-app-db", "external-cache.sqlite");
+    options.enrichmentCachePath ?? join(externalCacheDir!, "external-cache.sqlite");
   const externalCache: ExternalCache | null =
     options.llm || enrichedPipeline ? new ExternalCache(externalCachePath) : null;
   const llmClient = options.llm
