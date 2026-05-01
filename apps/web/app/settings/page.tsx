@@ -59,17 +59,29 @@ function reducer(state: PublicConfig | null, action: Action): PublicConfig | nul
 
 export default function SettingsPage() {
   const [config, dispatch] = useReducer(reducer, null);
+  // null = still loading; "forbidden" = non-admin (we hide admin-only cards
+  // but still render the per-user cards). Anything else = loaded admin view.
+  const [adminAccess, setAdminAccess] = useState<"loading" | "ok" | "forbidden">(
+    "loading",
+  );
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
 
   useEffect(() => {
     void fetch("/api/settings").then(async (res) => {
+      if (!res.ok) {
+        // 401/403 — regular user. Hide admin-only cards, but per-user cards
+        // (UserLlmCard / UserEnrichmentCard) still render below.
+        setAdminAccess("forbidden");
+        return;
+      }
       const c = (await res.json()) as PublicConfig;
       dispatch({ type: "set", config: c });
+      setAdminAccess("ok");
     });
   }, []);
 
-  if (!config) {
+  if (adminAccess === "loading") {
     return (
       <div className="space-y-6">
         <Skeleton className="h-9 w-32" />
@@ -108,6 +120,7 @@ export default function SettingsPage() {
 
       <UserEnrichmentCard />
 
+      {config && (<>
       <SettingsCard icon={Brain} title="LLM 增强（系统默认）" sub="所有未单独配置的用户使用这一份配置。启用 LLM 才会发起出网请求">
         <ToggleRow
           label="启用 LLM 参考文献增强解析"
@@ -291,6 +304,7 @@ export default function SettingsPage() {
           </p>
         </CardContent>
       </Card>
+      </>)}
     </div>
   );
 }
