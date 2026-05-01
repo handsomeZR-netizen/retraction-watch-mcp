@@ -45,10 +45,28 @@ interface ParseState {
 const emitter = new EventEmitter();
 const states = new Map<string, ParseState>();
 const queue: ParseJob[] = [];
-let processing = false;
+const activeJobs = new Set<ParseJob>();
+let activeWorkers = 0;
 let shuttingDown = false;
-let activeJob: ParseJob | null = null;
 let drainPromise: Promise<void> | null = null;
+
+/**
+ * Number of manuscripts that may parse in parallel within a single web
+ * process. Same-manuscript reentry is still blocked by the DB-level
+ * `acquireParseLease` (one parse_job_id per manuscript at a time), so raising
+ * this only affects how many *different* manuscripts can run together.
+ *
+ * Set via env (RW_PARSE_CONCURRENCY). Defaults to 2 — conservative because
+ * each worker may run PDF text extraction + tesseract OCR + LLM calls and
+ * those are CPU/memory hungry.
+ */
+const PARSE_CONCURRENCY = (() => {
+  const raw = process.env.RW_PARSE_CONCURRENCY;
+  if (!raw) return 2;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) return 2;
+  return Math.min(n, 8);
+})();
 
 export function startParseJob(input: {
   manuscriptId: string;
@@ -101,29 +119,46 @@ export function subscribeParseProgress(
 }
 
 async function drainQueue(): Promise<void> {
-  if (processing) return;
-  processing = true;
-  drainPromise = (async () => {
-    try {
-      for (;;) {
-        // Once shutdown has begun, do not pick up new queued jobs — finish the
-        // active one and let gracefulDrain flush whatever is still queued.
-        if (shuttingDown) return;
-        const job = queue.shift();
-        if (!job) return;
-        activeJob = job;
-        try {
-          await runParseJob(job);
-        } finally {
-          activeJob = null;
-        }
-      }
-    } finally {
-      processing = false;
-      drainPromise = null;
-    }
-  })();
+  // Spawn workers up to PARSE_CONCURRENCY. Each worker keeps pulling jobs off
+  // the queue until it's empty. Re-entrant: if a job is added while workers
+  // are already running, the existing workers pick it up; if some workers
+  // have already exited (queue empty), we top up to the cap.
+  const needed = Math.min(PARSE_CONCURRENCY, queue.length) - activeWorkers;
+  if (needed <= 0) return drainPromise ?? Promise.resolve();
+
+  const newWorkers: Promise<void>[] = [];
+  for (let i = 0; i < needed; i++) {
+    activeWorkers += 1;
+    newWorkers.push(workerLoop());
+  }
+  // drainPromise tracks "is anything still running" — extend it to include
+  // the new workers. gracefulDrain awaits this to know when the in-flight
+  // jobs have finished.
+  const previous = drainPromise ?? Promise.resolve();
+  drainPromise = Promise.all([previous, ...newWorkers]).then(() => {
+    if (activeWorkers === 0) drainPromise = null;
+  });
   return drainPromise;
+}
+
+async function workerLoop(): Promise<void> {
+  try {
+    for (;;) {
+      // Once shutdown has begun, no worker picks up new queued jobs — finish
+      // whatever's in flight and let gracefulDrain flush the queue.
+      if (shuttingDown) return;
+      const job = queue.shift();
+      if (!job) return;
+      activeJobs.add(job);
+      try {
+        await runParseJob(job);
+      } finally {
+        activeJobs.delete(job);
+      }
+    }
+  } finally {
+    activeWorkers -= 1;
+  }
 }
 
 /**
@@ -158,10 +193,10 @@ function flushPendingAsError(reason: string): void {
   for (const job of pending) {
     markManuscriptError(job.manuscriptId, job.parseJobId, reason);
   }
-  if (activeJob) {
-    markManuscriptError(activeJob.manuscriptId, activeJob.parseJobId, reason);
-    activeJob = null;
+  for (const job of activeJobs) {
+    markManuscriptError(job.manuscriptId, job.parseJobId, reason);
   }
+  activeJobs.clear();
 }
 
 async function runParseJob(job: ParseJob): Promise<void> {

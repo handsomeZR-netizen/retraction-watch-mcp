@@ -79,7 +79,6 @@ function createNextConfig(phase) {
       "better-sqlite3",
       "@rw/core",
       "@rw/ingest",
-      "pdfjs-dist",
       "unpdf",
       "tesseract.js",
       "mammoth",

@@ -94,9 +94,16 @@ export interface EnrichmentResult {
 }
 
 const EXTERNAL_CONFIDENCE = 0.95;
-const DEFAULT_MAX_CROSSREF_CALLS = 60;
-const DEFAULT_MAX_OPENALEX_CALLS = 60;
-const DEFAULT_MAX_SEMANTIC_SCHOLAR_CALLS = 60;
+function envCap(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return n;
+}
+const DEFAULT_MAX_CROSSREF_CALLS = envCap("RW_MAX_CROSSREF_CALLS", 60);
+const DEFAULT_MAX_OPENALEX_CALLS = envCap("RW_MAX_OPENALEX_CALLS", 60);
+const DEFAULT_MAX_SEMANTIC_SCHOLAR_CALLS = envCap("RW_MAX_SEMANTIC_SCHOLAR_CALLS", 60);
 /**
  * In-flight refs per enrichment step. The HttpClient already throttles to 3
  * per host, so going much higher here just queues at the semaphore. Six

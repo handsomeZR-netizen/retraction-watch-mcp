@@ -7,9 +7,13 @@
  *  - Per-host concurrency limit via an internal semaphore.
  *  - Retry on 429 / 5xx with exponential backoff, honoring `Retry-After`.
  *  - Hard timeout per attempt.
+ *  - HTTP keep-alive via a shared undici Agent so back-to-back lookups to
+ *    the same host (Crossref / OpenAlex / EPMC) reuse the TCP/TLS handshake.
  *
  * The client does not cache — pair it with `ExternalCache` for that.
  */
+
+import { Agent, type Dispatcher } from "undici";
 
 export interface HttpClientOptions {
   userAgent: string;
@@ -20,6 +24,10 @@ export interface HttpClientOptions {
   // exercise retry/backoff without real network.
   fetchImpl?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
+  // Optional dispatcher override. Defaults to a process-wide keep-alive
+  // Agent. Tests pass `null` (or omit) to skip — they inject `fetchImpl`
+  // anyway and never touch the network.
+  dispatcher?: Dispatcher | null;
 }
 
 export interface HttpRequestOptions {
@@ -42,6 +50,25 @@ const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_PER_HOST_CONCURRENCY = 3;
 const MAX_BACKOFF_MS = 30_000;
 
+/**
+ * Process-wide keep-alive dispatcher. Created lazily on first use so test
+ * environments that never make a real request don't spin up sockets.
+ */
+let sharedKeepAliveAgent: Agent | null = null;
+function getSharedKeepAliveAgent(): Agent {
+  if (!sharedKeepAliveAgent) {
+    sharedKeepAliveAgent = new Agent({
+      keepAliveTimeout: 30_000,
+      keepAliveMaxTimeout: 60_000,
+      // 6 sockets per origin matches typical browser defaults and is more
+      // than the per-host semaphore (3) so connection reuse, not pool size,
+      // is the limit.
+      connections: 6,
+    });
+  }
+  return sharedKeepAliveAgent;
+}
+
 export class HttpClient {
   private readonly semaphores = new Map<string, Semaphore>();
   private readonly userAgent: string;
@@ -50,6 +77,7 @@ export class HttpClient {
   private readonly perHostConcurrency: number;
   private readonly fetchImpl: typeof fetch;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly dispatcher: Dispatcher | null;
 
   constructor(opts: HttpClientOptions) {
     if (!opts.userAgent || !opts.userAgent.includes("(")) {
@@ -65,6 +93,16 @@ export class HttpClient {
     this.perHostConcurrency = opts.perHostConcurrency ?? DEFAULT_PER_HOST_CONCURRENCY;
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.sleep = opts.sleep ?? defaultSleep;
+    // Skip the shared keep-alive Agent when the caller provides a fake
+    // fetch — undici's dispatcher option only affects the real native
+    // fetch, and tests would otherwise leak open sockets.
+    if (opts.dispatcher !== undefined) {
+      this.dispatcher = opts.dispatcher;
+    } else if (opts.fetchImpl) {
+      this.dispatcher = null;
+    } else {
+      this.dispatcher = getSharedKeepAliveAgent();
+    }
   }
 
   async getJson<T>(url: string, opts: HttpRequestOptions = {}): Promise<HttpResponse<T>> {
@@ -102,13 +140,17 @@ export class HttpClient {
         : timeoutController.signal;
       let response: Response;
       try {
-        response = await this.fetchImpl(url, {
+        // The `dispatcher` field is undici-specific and ignored by RequestInit
+        // typing — cast to any to thread it through the native fetch.
+        const init: RequestInit & { dispatcher?: Dispatcher } = {
           headers: {
             "User-Agent": this.userAgent,
             Accept: "application/json",
           },
           signal,
-        });
+        };
+        if (this.dispatcher) init.dispatcher = this.dispatcher;
+        response = await this.fetchImpl(url, init);
       } catch (err) {
         clearTimeout(handle);
         if (attempt > this.maxRetries) {

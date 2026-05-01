@@ -13,6 +13,19 @@ export function getAppDb(): DB {
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
+  // synchronous=NORMAL is the recommended pairing with WAL: durable across
+  // crashes (group commits at checkpoint), but skips the per-write fsync that
+  // dominates writer latency. Worst-case loss is the last few committed
+  // transactions on a hard kernel crash, which is acceptable here — every
+  // manuscript also has its result.json on disk as a secondary record.
+  db.pragma("synchronous = NORMAL");
+  // Multiple parse workers can briefly contend for the writer lock; 5s
+  // leaves headroom over a typical commit (<10ms) and replaces SQLITE_BUSY
+  // with a transparent retry inside better-sqlite3.
+  db.pragma("busy_timeout = 5000");
+  // 256 MiB memory-mapped reads — keeps hot pages off the syscall path so
+  // the synchronous better-sqlite3 calls don't block the event loop.
+  db.pragma("mmap_size = 268435456");
   migrate(db);
   dbInstance = db;
   return db;

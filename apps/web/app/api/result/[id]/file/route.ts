@@ -57,7 +57,10 @@ export async function GET(
       status: 304,
       headers: {
         ETag: etag,
-        "Cache-Control": "private, max-age=3600, must-revalidate",
+        // The file is content-addressed (sha256 ETag) and a manuscript's upload
+    // is immutable for its lifetime. `immutable` skips revalidation entirely
+    // until the cache expires; long max-age + private keeps it per-user.
+    "Cache-Control": "private, max-age=31536000, immutable",
         "Accept-Ranges": "bytes",
       },
     });
@@ -82,7 +85,10 @@ export async function GET(
   const baseHeaders: Record<string, string> = {
     "Content-Type": contentType,
     "Content-Disposition": `inline; filename*=UTF-8''${safeName}`,
-    "Cache-Control": "private, max-age=3600, must-revalidate",
+    // The file is content-addressed (sha256 ETag) and a manuscript's upload
+    // is immutable for its lifetime. `immutable` skips revalidation entirely
+    // until the cache expires; long max-age + private keeps it per-user.
+    "Cache-Control": "private, max-age=31536000, immutable",
     "Accept-Ranges": "bytes",
     ETag: etag,
   };

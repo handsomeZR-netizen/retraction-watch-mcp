@@ -59,12 +59,25 @@ export interface LlmCallStats {
 export interface LlmRefsBatchOptions {
   batchSize?: number;
   maxRetries?: number;
+  /**
+   * Cap on in-flight batches when the input spans multiple batches. Defaults
+   * to 3. Set to 1 to restore the original strictly-sequential behavior.
+   */
+  batchConcurrency?: number;
 }
 
 const DEFAULT_BATCH_SIZE = 20;
 export const MAX_LLM_CALLS_PER_MANUSCRIPT = 10;
 const LLM_TIMEOUT_MS = 60_000;
 const MAX_REF_CHARS = 800;
+/**
+ * In-flight LLM batches per call to `structureReferences`. Higher values
+ * shrink wall-clock for long bibliographies (200 refs in ≤ 4 rounds instead
+ * of 10), but every batch still spends one slot of the 10/manuscript LLM
+ * budget — concurrency does NOT raise the cap. Tuned conservatively to keep
+ * per-key RPM well under the typical Deepseek / OpenAI rate limit.
+ */
+const DEFAULT_BATCH_CONCURRENCY = 3;
 
 const RefsSchema = z.object({
   references: z.array(
@@ -133,13 +146,41 @@ export class LlmExtractionClient {
   ): Promise<StructuredReference[]> {
     if (refs.length === 0) return [];
     const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
-    const out: StructuredReference[] = [];
+    const concurrency = Math.max(
+      1,
+      options.batchConcurrency ?? DEFAULT_BATCH_CONCURRENCY,
+    );
+    const maxRetries = options.maxRetries ?? 1;
+    // Slice up-front so we can fan out and still preserve original ref order
+    // in the merged output (results[i] holds batch i's refs in their original
+    // positions).
+    const batches: RawReference[][] = [];
     for (let i = 0; i < refs.length; i += batchSize) {
-      const batch = refs.slice(i, i + batchSize);
-      const structured = await this.structureRefsBatch(batch, options.maxRetries ?? 1);
-      out.push(...structured);
+      batches.push(refs.slice(i, i + batchSize));
     }
-    return out;
+    if (concurrency === 1 || batches.length === 1) {
+      const out: StructuredReference[] = [];
+      for (const batch of batches) {
+        const structured = await this.structureRefsBatch(batch, maxRetries);
+        out.push(...structured);
+      }
+      return out;
+    }
+    const results: StructuredReference[][] = new Array(batches.length);
+    let cursor = 0;
+    const worker = async (): Promise<void> => {
+      while (true) {
+        const idx = cursor++;
+        if (idx >= batches.length) return;
+        results[idx] = await this.structureRefsBatch(batches[idx], maxRetries);
+      }
+    };
+    const workers: Promise<void>[] = [];
+    for (let w = 0; w < Math.min(concurrency, batches.length); w++) {
+      workers.push(worker());
+    }
+    await Promise.all(workers);
+    return results.flat();
   }
 
   async parseHeader(headerText: string): Promise<ManuscriptHeaderMeta | null> {
