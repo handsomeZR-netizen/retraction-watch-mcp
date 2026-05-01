@@ -428,11 +428,18 @@ function buildEnrichmentClients(
     maxRetries: 3,
     perHostConcurrency: 3,
   });
+  // Semantic Scholar client is built ONLY when explicitly enabled via env.
+  // Free / unauthenticated S2 traffic gets aggressively rate-limited
+  // (~1 req/s), which on a 50-ref paper adds ~10 min of pure backoff with
+  // ~0 useful resolutions. Enable when an API key is in hand:
+  //   RW_S2_API_KEY=<key>   or   RW_S2_ENABLED=1
+  const s2Enabled =
+    Boolean(process.env.RW_S2_API_KEY) || process.env.RW_S2_ENABLED === "1";
   return {
     crossref: new CrossrefClient(http, cache),
     europepmc: new EuropePmcClient(http, cache),
     openalex: new OpenAlexClient(http, cache),
-    semanticScholar: new SemanticScholarClient(http, cache),
+    semanticScholar: s2Enabled ? new SemanticScholarClient(http, cache) : undefined,
     llm: llmClient ?? undefined,
   };
 }
