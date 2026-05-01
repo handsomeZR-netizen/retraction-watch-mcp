@@ -97,6 +97,13 @@ const EXTERNAL_CONFIDENCE = 0.95;
 const DEFAULT_MAX_CROSSREF_CALLS = 60;
 const DEFAULT_MAX_OPENALEX_CALLS = 60;
 const DEFAULT_MAX_SEMANTIC_SCHOLAR_CALLS = 60;
+/**
+ * In-flight refs per enrichment step. The HttpClient already throttles to 3
+ * per host, so going much higher here just queues at the semaphore. Six
+ * leaves headroom for refs that hit different hosts in step 3 (Crossref →
+ * OpenAlex → Semantic Scholar fallback chain).
+ */
+const ENRICHMENT_CONCURRENCY = 6;
 
 export async function enrichMetadata(
   candidates: StructuredReference[],
@@ -176,15 +183,19 @@ export async function enrichMetadata(
 
   // Step 2 — Crossref DOI validation + field fill-in.
   if (clients.crossref) {
-    for (const slot of working) {
+    const crossref = clients.crossref;
+    await mapWithConcurrency(working, ENRICHMENT_CONCURRENCY, async (slot) => {
       const { ref, refIndex } = slot;
-      if (!ref.doi) continue;
+      if (!ref.doi) return;
+      // Synchronous quota claim before await — JS is single-threaded so the
+      // check + increment is atomic across concurrent refs, even with the
+      // map-with-concurrency fan-out.
       if (telemetry.crossrefCalls >= maxCrossrefCalls) {
         telemetry.crossrefSkippedOverLimit += 1;
-        continue;
+        return;
       }
       telemetry.crossrefCalls += 1;
-      const work = await clients.crossref.getByDoi(ref.doi);
+      const work = await crossref.getByDoi(ref.doi);
       if (!work) {
         telemetry.enrichmentFailures += 1;
         trace.push({
@@ -195,10 +206,10 @@ export async function enrichMetadata(
           accepted: false,
           reason: "crossref_lookup_failed",
         });
-        continue;
+        return;
       }
       slot.ref = mergeCrossrefIntoLocal(ref, work, refIndex, trace);
-    }
+    });
   }
 
   // Step 3 — title→DOI for refs that still lack one. Crossref first, then
@@ -206,14 +217,14 @@ export async function enrichMetadata(
   // applied to both — we never accept an external DOI without that
   // agreement.
   if (clients.crossref || clients.openalex || clients.semanticScholar) {
-    for (const slot of working) {
+    await mapWithConcurrency(working, ENRICHMENT_CONCURRENCY, async (slot) => {
       const { ref, refIndex } = slot;
-      if (ref.doi) continue;
-      if (!ref.title || ref.year == null) continue;
+      if (ref.doi) return;
+      if (!ref.title || ref.year == null) return;
       // Only try when the local title is at least medium-confidence; otherwise
       // we'd be querying external APIs with garbage.
       const tier = classifyReferenceTier(ref);
-      if (tier === "raw_only") continue;
+      if (tier === "raw_only") return;
 
       // 3a — Crossref title-search.
       let resolved: {
@@ -326,17 +337,18 @@ export async function enrichMetadata(
           after: resolved.doi,
         });
       }
-    }
+    });
   }
 
   // Step 4 — Europe PMC DOI lookup for refs that still lack a DOI but have PMID.
   if (clients.europepmc) {
-    for (const slot of working) {
+    const epmc = clients.europepmc;
+    await mapWithConcurrency(working, ENRICHMENT_CONCURRENCY, async (slot) => {
       const { ref, refIndex } = slot;
-      if (ref.doi) continue;
-      if (!ref.pmid) continue;
+      if (ref.doi) return;
+      if (!ref.pmid) return;
       telemetry.epmcCalls += 1;
-      const work = await clients.europepmc.getByPmid(ref.pmid);
+      const work = await epmc.getByPmid(ref.pmid);
       if (!work || !work.doi) {
         trace.push({
           refIndex,
@@ -346,7 +358,7 @@ export async function enrichMetadata(
           accepted: false,
           reason: "epmc_no_doi_for_pmid",
         });
-        continue;
+        return;
       }
       const provenance = ref.provenance ?? {};
       provenance.doi = {
@@ -364,7 +376,7 @@ export async function enrichMetadata(
         reason: "epmc_pmid_lookup",
         after: work.doi,
       });
-    }
+    });
   }
 
   return {
@@ -469,3 +481,33 @@ function mkProv<T>(value: T, source: SourceTag, confidence: number): FieldProven
 
 // Make EpmcWork referenceable by callers without a separate import.
 export type { EpmcWork };
+
+/**
+ * Process `items` in parallel, capping in-flight work at `limit`. The
+ * callback can mutate shared state (telemetry counters, the items
+ * themselves, the trace array) safely because JS is single-threaded between
+ * awaits — sync increments before an `await` are atomic w.r.t. other
+ * concurrent callbacks.
+ *
+ * Used by the enrichment pipeline to fan out per-ref external lookups
+ * instead of awaiting them one at a time.
+ */
+async function mapWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  let cursor = 0;
+  const workers: Promise<void>[] = [];
+  const next = async (): Promise<void> => {
+    while (true) {
+      const i = cursor++;
+      if (i >= items.length) return;
+      await fn(items[i], i);
+    }
+  };
+  for (let w = 0; w < Math.min(limit, items.length); w++) {
+    workers.push(next());
+  }
+  await Promise.all(workers);
+}

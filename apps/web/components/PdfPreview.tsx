@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowSquareOut,
+  CircleNotch,
   CornersIn,
   CornersOut,
   DownloadSimple,
@@ -36,8 +37,16 @@ export function PdfPreview({
   className,
 }: Props) {
   const [zoom, setZoom] = useState(false);
+  const [iframeLoaded, setIframeLoaded] = useState(false);
   const fileUrl = `/api/result/${manuscriptId}/file`;
   const isPdf = fileType === "pdf";
+
+  // Reset the loading state whenever the previewed file changes — without
+  // this, switching between manuscripts on the same page would briefly show a
+  // stale "loaded" iframe before the new PDF starts streaming.
+  useEffect(() => {
+    setIframeLoaded(false);
+  }, [fileUrl]);
 
   if (hidden) {
     return (
@@ -109,18 +118,35 @@ export function PdfPreview({
         </div>
       </header>
 
-      <div className="flex-1 min-h-0 bg-muted/30">
+      <div className="flex-1 min-h-0 bg-muted/30 relative">
         {isPdf ? (
-          <iframe
-            src={`${fileUrl}#toolbar=1&navpanes=0&view=FitH`}
-            title={fileName}
-            className="w-full h-full border-0"
-          />
+          <>
+            <iframe
+              src={`${fileUrl}#toolbar=1&navpanes=0&view=FitH`}
+              title={fileName}
+              className="w-full h-full border-0"
+              onLoad={() => setIframeLoaded(true)}
+            />
+            {!iframeLoaded && <PdfLoadingOverlay bytes={bytes} />}
+          </>
         ) : (
           <NonPdfFallback fileType={fileType} fileUrl={fileUrl} fileName={fileName} />
         )}
       </div>
     </Card>
+  );
+}
+
+function PdfLoadingOverlay({ bytes }: { bytes?: number | null }) {
+  return (
+    <div className="absolute inset-0 grid place-items-center bg-muted/30 backdrop-blur-[1px] pointer-events-none">
+      <div className="flex flex-col items-center gap-3 text-muted-foreground">
+        <CircleNotch className="h-6 w-6 animate-spin" weight="bold" />
+        <div className="text-xs font-mono">
+          加载预览中{bytes != null ? ` · ${formatBytes(bytes)}` : ""}
+        </div>
+      </div>
+    </div>
   );
 }
 

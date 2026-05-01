@@ -18,7 +18,7 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const auth = await requireUser();
@@ -33,21 +33,122 @@ export async function GET(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
   let size = 0;
+  let mtimeMs = 0;
   try {
-    size = (await stat(upload.filePath)).size;
+    const st = await stat(upload.filePath);
+    size = st.size;
+    mtimeMs = st.mtimeMs;
   } catch {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  const stream = fs.createReadStream(upload.filePath);
-  const webStream = Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>;
+
+  // ETag: prefer sha256 (stable across rebuilds, immutable per manuscript).
+  // Fall back to size+mtime when the upload predates sha256 capture.
+  const etag = upload.sha256
+    ? `"sha256-${upload.sha256}"`
+    : `"sm-${size}-${Math.floor(mtimeMs)}"`;
   const contentType = CONTENT_TYPES[row.file_type] ?? "application/octet-stream";
   const safeName = encodeURIComponent(upload.fileName);
+
+  // Conditional GET: return 304 when the client already has this exact body.
+  const ifNoneMatch = req.headers.get("if-none-match");
+  if (ifNoneMatch && ifNoneMatch === etag) {
+    return new Response(null, {
+      status: 304,
+      headers: {
+        ETag: etag,
+        "Cache-Control": "private, max-age=3600, must-revalidate",
+        "Accept-Ranges": "bytes",
+      },
+    });
+  }
+
+  // Range support: pdf.js fetches small slices (header + xref + per-page) so it
+  // can render page 1 before the full file finishes downloading. Without this
+  // the browser must buffer the entire PDF first.
+  const rangeHeader = req.headers.get("range");
+  const range = rangeHeader ? parseRange(rangeHeader, size) : null;
+  if (rangeHeader && !range) {
+    return new Response(null, {
+      status: 416,
+      headers: {
+        "Content-Range": `bytes */${size}`,
+        "Accept-Ranges": "bytes",
+        ETag: etag,
+      },
+    });
+  }
+
+  const baseHeaders: Record<string, string> = {
+    "Content-Type": contentType,
+    "Content-Disposition": `inline; filename*=UTF-8''${safeName}`,
+    "Cache-Control": "private, max-age=3600, must-revalidate",
+    "Accept-Ranges": "bytes",
+    ETag: etag,
+  };
+
+  if (range) {
+    const { start, end } = range;
+    const length = end - start + 1;
+    const stream = fs.createReadStream(upload.filePath, { start, end });
+    const webStream = Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>;
+    return new Response(webStream, {
+      status: 206,
+      headers: {
+        ...baseHeaders,
+        "Content-Length": String(length),
+        "Content-Range": `bytes ${start}-${end}/${size}`,
+      },
+    });
+  }
+
+  const stream = fs.createReadStream(upload.filePath);
+  const webStream = Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>;
   return new Response(webStream, {
     headers: {
-      "Content-Type": contentType,
+      ...baseHeaders,
       "Content-Length": String(size),
-      "Content-Disposition": `inline; filename*=UTF-8''${safeName}`,
-      "Cache-Control": "private, max-age=3600",
     },
   });
+}
+
+/**
+ * Parse a single-range RFC 7233 `Range: bytes=…` header. Multipart byte
+ * ranges are intentionally unsupported — pdf.js only uses single ranges and
+ * the multipart response format would double the route's complexity for no
+ * practical benefit.
+ *
+ * Returns `null` when the range is malformed, multi-range, or unsatisfiable
+ * (caller should send 416).
+ */
+function parseRange(
+  header: string,
+  size: number,
+): { start: number; end: number } | null {
+  if (size <= 0) return null;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!match) return null;
+  const startStr = match[1];
+  const endStr = match[2];
+  let start: number;
+  let end: number;
+  if (startStr === "" && endStr === "") return null;
+  if (startStr === "") {
+    // Suffix range: last N bytes.
+    const suffix = Number(endStr);
+    if (!Number.isFinite(suffix) || suffix <= 0) return null;
+    start = Math.max(0, size - suffix);
+    end = size - 1;
+  } else {
+    start = Number(startStr);
+    if (!Number.isFinite(start) || start < 0 || start >= size) return null;
+    if (endStr === "") {
+      end = size - 1;
+    } else {
+      end = Number(endStr);
+      if (!Number.isFinite(end) || end < start) return null;
+      if (end >= size) end = size - 1;
+    }
+  }
+  return { start, end };
 }
