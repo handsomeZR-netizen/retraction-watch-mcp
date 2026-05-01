@@ -13,7 +13,11 @@ import {
   markManuscriptError,
 } from "@/lib/db/manuscripts";
 import { writeScreeningLog } from "@/lib/db/screening-logs";
-import { findUserById, getUserLlmSettings } from "@/lib/db/users";
+import {
+  findUserById,
+  getUserEnrichmentContactEmail,
+  getUserLlmSettings,
+} from "@/lib/db/users";
 import { getRepository } from "@/lib/repository";
 import { getUpload, saveResult } from "@/lib/store";
 import type { CurrentUser } from "@/lib/auth/session";
@@ -190,8 +194,12 @@ async function runParseJob(job: ParseJob): Promise<void> {
       ? { baseUrl: effLlm.baseUrl, apiKey: effLlm.apiKey, model: effLlm.model }
       : undefined;
 
-    const enrichmentContact =
-      config.enrichment.contactEmail || process.env.RW_CONTACT_EMAIL || "";
+    // Per-user contact email is the single source of truth — no global
+    // fallback. If the user hasn't filled their own email in /settings,
+    // external enrichment (Crossref / OpenAlex / EPMC) silently no-ops for
+    // their parse, even though the rest of the enriched pipeline still runs
+    // (LLM structuring, layout-aware re-extraction, etc.).
+    const enrichmentContact = getUserEnrichmentContactEmail(job.userId) ?? "";
     // Always honor RW_USE_ENRICHED_PIPELINE=0 as a kill switch, even when a
     // config file says enrichment is enabled. Without this short-circuit the
     // documented env rollback (set RW_USE_ENRICHED_PIPELINE=0 to stop

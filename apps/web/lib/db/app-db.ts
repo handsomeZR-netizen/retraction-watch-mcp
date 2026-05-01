@@ -36,6 +36,7 @@ function migrate(db: DB): void {
   if (current < 9) inTx(applyV9);
   if (current < 10) inTx(applyV10);
   if (current < 11) inTx(applyV11);
+  if (current < 12) inTx(applyV12);
 }
 
 function applyV1(db: DB): void {
@@ -254,6 +255,21 @@ function applyV7(db: DB): void {
       ON screening_logs(created_at DESC, id DESC);
     PRAGMA user_version = 7;
   `);
+}
+
+function applyV12(db: DB): void {
+  // Per-user Crossref / OpenAlex / EPMC contact email. Previously this
+  // lived in /etc-style global config (config.json + RW_CONTACT_EMAIL env);
+  // now it's bound to the user who triggered the parse, so polite-pool
+  // attribution lands on the right person and the admin can't accidentally
+  // run the whole site under their personal mailbox.
+  const cols = (db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).map(
+    (r) => r.name,
+  );
+  if (!cols.includes("enrichment_contact_email")) {
+    db.exec("ALTER TABLE users ADD COLUMN enrichment_contact_email TEXT");
+  }
+  db.exec("PRAGMA user_version = 12");
 }
 
 function applyV11(db: DB): void {

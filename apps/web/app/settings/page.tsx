@@ -33,7 +33,7 @@ interface PublicConfig {
   };
   ocr: { cloudEnabled: boolean };
   retention: { keepUploads: boolean; keepHours: number };
-  enrichment: { enabled: boolean; contactEmail: string };
+  enrichment: { enabled: boolean };
 }
 
 type Action =
@@ -105,6 +105,8 @@ export default function SettingsPage() {
       </header>
 
       <UserLlmCard />
+
+      <UserEnrichmentCard />
 
       <SettingsCard icon={Brain} title="LLM 增强（系统默认）" sub="所有未单独配置的用户使用这一份配置。启用 LLM 才会发起出网请求">
         <ToggleRow
@@ -223,32 +225,11 @@ export default function SettingsPage() {
             void save({ enrichment: { ...config.enrichment, enabled: v } });
           }}
         />
-        <div className="space-y-1.5">
-          <Label htmlFor="contactEmail">联系邮箱（Crossref polite pool）</Label>
-          <Input
-            id="contactEmail"
-            type="email"
-            placeholder="ops@example.com"
-            value={config.enrichment.contactEmail}
-            onChange={(e) =>
-              dispatch({
-                type: "patchEnrichment",
-                partial: { contactEmail: e.target.value },
-              })
-            }
-            onBlur={(e) =>
-              void save({
-                enrichment: {
-                  ...config.enrichment,
-                  contactEmail: e.target.value,
-                },
-              })
-            }
-          />
-          <p className="text-[11px] text-muted-foreground">
-            留空则跳过 Crossref / EPMC 反查（不会降级匿名访问）。建议填一个能联系到管理员的邮箱。
-          </p>
-        </div>
+        <p className="text-[11px] text-muted-foreground">
+          每位用户在
+          <span className="font-mono mx-1">&ldquo;我的外源邮箱配置&rdquo;</span>
+          卡里填自己的联系邮箱，其稿件解析时使用各自的邮箱进行 Crossref / EPMC polite-pool 调用。整站不再共用一个邮箱。
+        </p>
       </SettingsCard>
 
       <SettingsCard icon={ImageIcon} title="云端 OCR" sub="仅扫描版 PDF 才会触发；本地默认走 tesseract.js">
@@ -507,6 +488,119 @@ function UserLlmCard() {
             清除我的私人配置
           </Button>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface UserEnrichmentConfig {
+  contactEmail: string;
+  hasContactEmail: boolean;
+}
+
+function UserEnrichmentCard() {
+  const [cfg, setCfg] = useState<UserEnrichmentConfig | null>(null);
+  const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    void fetch("/api/account/enrichment").then(async (res) => {
+      if (!res.ok) return;
+      const j = (await res.json()) as UserEnrichmentConfig;
+      setCfg(j);
+      setDraft(j.contactEmail || "");
+    });
+  }, []);
+
+  if (!cfg) return <Skeleton className="h-44 w-full" />;
+
+  async function save(value: string) {
+    const res = await fetch("/api/account/enrichment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contactEmail: value.trim() }),
+    });
+    if (!res.ok) {
+      toast.error("保存失败：" + (await res.text()));
+      return;
+    }
+    setCfg((await res.json()) as UserEnrichmentConfig);
+    toast.success(value.trim() ? "邮箱已保存" : "邮箱已清空");
+  }
+
+  async function clearEmail() {
+    if (!confirm("清除你的外源联系邮箱？清除后你上传的稿件将不再走 Crossref / EPMC 反查。"))
+      return;
+    const res = await fetch("/api/account/enrichment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clear: true }),
+    });
+    if (!res.ok) {
+      toast.error("操作失败");
+      return;
+    }
+    setCfg((await res.json()) as UserEnrichmentConfig);
+    setDraft("");
+    toast.success("已清除");
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-3">
+          <span className="grid h-9 w-9 place-items-center rounded-md bg-primary/10 text-primary">
+            <GlobeHemisphereWest className="h-4 w-4" weight="duotone" />
+          </span>
+          <div className="flex-1">
+            <CardTitle className="text-base">我的外源邮箱配置</CardTitle>
+            <CardDescription className="text-xs mt-0.5">
+              用于 Crossref / OpenAlex / Europe PMC 的 polite-pool 联系邮箱。**只跟你账户绑定**，仅在你上传稿件时使用。留空则你的稿件不走外源反查。
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="userContactEmail" className="flex items-center gap-2">
+            联系邮箱
+            {cfg.hasContactEmail && (
+              <span className="text-success text-xs font-normal">· 已保存</span>
+            )}
+          </Label>
+          <div className="flex items-center gap-2">
+            <Input
+              id="userContactEmail"
+              type="email"
+              placeholder="you@example.com"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+            />
+            <Button
+              disabled={draft.trim() === (cfg.contactEmail || "")}
+              onClick={() => void save(draft)}
+            >
+              <FloppyDisk className="h-4 w-4" weight="bold" />
+              保存
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            邮箱仅用于满足 Crossref / OpenAlex 的 polite-pool 标识要求；不会被发送邮件，也不会公开。
+          </p>
+        </div>
+
+        {cfg.hasContactEmail && (
+          <div className="flex justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearEmail}
+              className="text-destructive"
+            >
+              <TrashSimple className="h-4 w-4" weight="duotone" />
+              清除我的邮箱
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

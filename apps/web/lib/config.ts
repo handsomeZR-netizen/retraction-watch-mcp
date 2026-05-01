@@ -19,7 +19,6 @@ export interface AppConfig {
   };
   enrichment: {
     enabled: boolean;
-    contactEmail: string;
   };
 }
 
@@ -40,7 +39,6 @@ const DEFAULT_CONFIG: AppConfig = {
   },
   enrichment: {
     enabled: true,
-    contactEmail: "",
   },
 };
 
@@ -145,11 +143,10 @@ function envOverrides(): Partial<AppConfig> {
       enableHeaderParse: true,
     };
   }
-  if (process.env.RW_CONTACT_EMAIL || process.env.RW_USE_ENRICHED_PIPELINE === "0") {
+  if (process.env.RW_USE_ENRICHED_PIPELINE === "0") {
     overrides.enrichment = {
       ...DEFAULT_CONFIG.enrichment,
-      enabled: process.env.RW_USE_ENRICHED_PIPELINE !== "0",
-      contactEmail: (process.env.RW_CONTACT_EMAIL ?? "").trim(),
+      enabled: false,
     };
   }
   return overrides;

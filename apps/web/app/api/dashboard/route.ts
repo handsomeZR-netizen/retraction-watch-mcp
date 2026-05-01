@@ -3,7 +3,11 @@ import { requireUser } from "@/lib/auth/guard";
 import { activeScope } from "@/lib/auth/scope";
 import { loadConfig, loadConfigSource } from "@/lib/config";
 import { getAppDb } from "@/lib/db/app-db";
-import { findUserById, getUserLlmSettings } from "@/lib/db/users";
+import {
+  findUserById,
+  getUserEnrichmentContactEmail,
+  getUserLlmSettings,
+} from "@/lib/db/users";
 import { getWorkspace, listWorkspaceMembers } from "@/lib/db/workspaces";
 import { getRepository } from "@/lib/repository";
 
@@ -163,9 +167,7 @@ export async function GET() {
     },
     enrichment: {
       enabled: config.enrichment.enabled,
-      hasContactEmail: Boolean(
-        config.enrichment.contactEmail || process.env.RW_CONTACT_EMAIL,
-      ),
+      hasContactEmail: Boolean(getUserEnrichmentContactEmail(user.id)),
     },
     source,
   });

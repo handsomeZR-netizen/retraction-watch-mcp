@@ -21,6 +21,7 @@ export interface UserRow {
   email: string | null;
   email_verified: 0 | 1;
   active_workspace_id: string | null;
+  enrichment_contact_email: string | null;
 }
 
 export function findUserByEmail(email: string): UserRow | null {
@@ -82,6 +83,21 @@ function encryptLlmSettings(value: UserLlmSettings): UserLlmSettings {
         : encryptString(value.apiKey)
       : value.apiKey,
   };
+}
+
+export function getUserEnrichmentContactEmail(userId: string): string | null {
+  const row = getAppDb()
+    .prepare("SELECT enrichment_contact_email FROM users WHERE id = ?")
+    .get(userId) as { enrichment_contact_email: string | null } | undefined;
+  const value = row?.enrichment_contact_email?.trim();
+  return value ? value : null;
+}
+
+export function setUserEnrichmentContactEmail(userId: string, email: string | null): void {
+  const value = email?.trim();
+  getAppDb()
+    .prepare("UPDATE users SET enrichment_contact_email = ? WHERE id = ?")
+    .run(value && value.length > 0 ? value : null, userId);
 }
 
 export function setUserPassword(userId: string, passwordHash: string): void {

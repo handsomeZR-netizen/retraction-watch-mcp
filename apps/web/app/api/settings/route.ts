@@ -32,13 +32,6 @@ const SaveSchema = z.object({
   enrichment: z
     .object({
       enabled: z.boolean().optional(),
-      contactEmail: z
-        .string()
-        .max(200)
-        .refine((v) => v === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), {
-          message: "Must be a valid email address or empty",
-        })
-        .optional(),
     })
     .optional(),
 });
