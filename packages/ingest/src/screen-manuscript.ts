@@ -32,6 +32,7 @@ import { enrichMetadata, type EnrichmentClients } from "./pipeline/enrich-metada
 import { CrossrefClient } from "./external/crossref.js";
 import { EuropePmcClient } from "./external/europepmc.js";
 import { OpenAlexClient } from "./external/openalex.js";
+import { SemanticScholarClient } from "./external/semantic-scholar.js";
 import { HttpClient } from "./external/http-client.js";
 import { ExternalCache } from "./external/cache.js";
 import type {
@@ -75,6 +76,10 @@ export interface ScreenManuscriptOptions {
    * Cap on OpenAlex network calls per manuscript (default 60).
    */
   maxOpenAlexCalls?: number;
+  /**
+   * Cap on Semantic Scholar network calls per manuscript (default 60).
+   */
+  maxSemanticScholarCalls?: number;
 }
 
 export async function screenManuscript(
@@ -233,6 +238,8 @@ export async function screenManuscript(
     cacheHits: 0,
     openalexCalls: 0,
     openalexResolved: 0,
+    semanticScholarCalls: 0,
+    semanticScholarResolved: 0,
   };
 
   if (enrichedPipeline) {
@@ -246,11 +253,13 @@ export async function screenManuscript(
         crossref: clients.crossref,
         europepmc: clients.europepmc,
         openalex: clients.openalex,
+        semanticScholar: clients.semanticScholar,
         llm: clients.llm,
       },
       {
         maxCrossrefCalls: options.maxCrossrefCalls,
         maxOpenAlexCalls: options.maxOpenAlexCalls,
+        maxSemanticScholarCalls: options.maxSemanticScholarCalls,
       },
     );
     allStructured = dedupeStructuredRefs([...bibReferences, ...enrichResult.references]);
@@ -262,6 +271,10 @@ export async function screenManuscript(
     enrichmentTelemetry.cacheHits = externalCache?.stats.hits ?? 0;
     enrichmentTelemetry.openalexCalls = enrichResult.telemetry.openalexCalls;
     enrichmentTelemetry.openalexResolved = enrichResult.telemetry.openalexResolved;
+    enrichmentTelemetry.semanticScholarCalls =
+      enrichResult.telemetry.semanticScholarCalls;
+    enrichmentTelemetry.semanticScholarResolved =
+      enrichResult.telemetry.semanticScholarResolved;
     progress({
       stage: "refs_structured",
       message: `结构化参考文献：${allStructured.length} 条 (enriched)`,
@@ -271,6 +284,8 @@ export async function screenManuscript(
         epmcCalls: enrichResult.telemetry.epmcCalls,
         openalexCalls: enrichResult.telemetry.openalexCalls,
         openalexResolved: enrichResult.telemetry.openalexResolved,
+        semanticScholarCalls: enrichResult.telemetry.semanticScholarCalls,
+        semanticScholarResolved: enrichResult.telemetry.semanticScholarResolved,
         cacheHits: enrichmentTelemetry.cacheHits,
         bibHits: bibReferences.length,
       },
@@ -362,6 +377,8 @@ export async function screenManuscript(
       enrichmentFailures: enrichmentTelemetry.enrichmentFailures,
       openalexCalls: enrichmentTelemetry.openalexCalls,
       openalexResolved: enrichmentTelemetry.openalexResolved,
+      semanticScholarCalls: enrichmentTelemetry.semanticScholarCalls,
+      semanticScholarResolved: enrichmentTelemetry.semanticScholarResolved,
     },
     consequentialUseWarning: CONSEQUENTIAL_USE_WARNING,
     generatedAt: new Date().toISOString(),
@@ -388,6 +405,7 @@ interface BuiltEnrichmentClients {
   crossref?: CrossrefClient;
   europepmc?: EuropePmcClient;
   openalex?: OpenAlexClient;
+  semanticScholar?: SemanticScholarClient;
   llm?: LlmExtractionClient;
 }
 
@@ -398,9 +416,10 @@ function buildEnrichmentClients(
 ): BuiltEnrichmentClients {
   const contact = options.enrichmentContact ?? process.env.RW_CONTACT_EMAIL;
   if (!contact || !cache) {
-    // Without a contact mailto we won't hit Crossref / EPMC / OpenAlex (the
-    // polite-pool User-Agent constructor would reject), but LLM-only
-    // enrichment can still help refs whose regex extraction failed.
+    // Without a contact mailto we won't hit Crossref / EPMC / OpenAlex /
+    // Semantic Scholar (the polite-pool User-Agent constructor would
+    // reject), but LLM-only enrichment can still help refs whose regex
+    // extraction failed.
     return { llm: llmClient ?? undefined };
   }
   const http = new HttpClient({
@@ -413,6 +432,7 @@ function buildEnrichmentClients(
     crossref: new CrossrefClient(http, cache),
     europepmc: new EuropePmcClient(http, cache),
     openalex: new OpenAlexClient(http, cache),
+    semanticScholar: new SemanticScholarClient(http, cache),
     llm: llmClient ?? undefined,
   };
 }

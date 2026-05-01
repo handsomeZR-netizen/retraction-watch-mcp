@@ -12,6 +12,7 @@ const SOURCE_LABEL: Record<SourceTag, string> = {
   crossref: "Crossref",
   europepmc: "Europe PMC",
   openalex: "OpenAlex",
+  semanticscholar: "Semantic Scholar",
 };
 
 const SOURCE_TONE: Record<SourceTag, string> = {
@@ -23,6 +24,7 @@ const SOURCE_TONE: Record<SourceTag, string> = {
   crossref: "bg-success/10 text-success border-success/20",
   europepmc: "bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/20",
   openalex: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20",
+  semanticscholar: "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/20",
 };
 
 const FIELD_LABEL: Record<keyof ProvenanceMap, string> = {

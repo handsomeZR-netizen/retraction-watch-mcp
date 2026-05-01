@@ -106,12 +106,13 @@ export class EuropePmcClient {
   async resolveByTitle(
     localTitle: string,
     localYear: number | null,
+    localAuthors?: string[],
   ): Promise<EpmcResolveResult | null> {
     const candidates = await this.searchByTitle(localTitle);
     for (const work of candidates) {
       const decision = acceptFusionMatch(
-        { title: localTitle, year: localYear },
-        { title: work.title, year: work.year },
+        { title: localTitle, year: localYear, authors: localAuthors },
+        { title: work.title, year: work.year, authors: work.authors },
       );
       if (decision.accept) {
         return {

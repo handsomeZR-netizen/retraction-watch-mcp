@@ -3,6 +3,7 @@ import { classifyReferenceTier } from "../extraction/confidence.js";
 import type { CrossrefClient, CrossrefWork } from "../external/crossref.js";
 import type { EpmcWork, EuropePmcClient } from "../external/europepmc.js";
 import type { OpenAlexClient } from "../external/openalex.js";
+import type { SemanticScholarClient } from "../external/semantic-scholar.js";
 import { looksLikeMetadataNoise } from "../extraction/validate-llm.js";
 import type { LlmExtractionClient } from "../llm-client.js";
 import type { RawReference, StructuredReference } from "../types.js";
@@ -35,6 +36,7 @@ export interface EnrichmentClients {
   crossref?: CrossrefClient;
   europepmc?: EuropePmcClient;
   openalex?: OpenAlexClient;
+  semanticScholar?: SemanticScholarClient;
   llm?: LlmExtractionClient;
 }
 
@@ -52,6 +54,11 @@ export interface EnrichmentLimits {
    * defense-in-depth rationale as Crossref. Default 60.
    */
   maxOpenAlexCalls?: number;
+  /**
+   * Cap on Semantic Scholar network calls per manuscript (Step 3 third
+   * fallback). Default 60.
+   */
+  maxSemanticScholarCalls?: number;
 }
 
 export interface EnrichmentTelemetry {
@@ -64,6 +71,9 @@ export interface EnrichmentTelemetry {
   openalexCalls: number;
   openalexSkippedOverLimit: number;
   openalexResolved: number;
+  semanticScholarCalls: number;
+  semanticScholarSkippedOverLimit: number;
+  semanticScholarResolved: number;
 }
 
 export interface ParseTraceEntry {
@@ -86,6 +96,7 @@ export interface EnrichmentResult {
 const EXTERNAL_CONFIDENCE = 0.95;
 const DEFAULT_MAX_CROSSREF_CALLS = 60;
 const DEFAULT_MAX_OPENALEX_CALLS = 60;
+const DEFAULT_MAX_SEMANTIC_SCHOLAR_CALLS = 60;
 
 export async function enrichMetadata(
   candidates: StructuredReference[],
@@ -103,9 +114,14 @@ export async function enrichMetadata(
     openalexCalls: 0,
     openalexSkippedOverLimit: 0,
     openalexResolved: 0,
+    semanticScholarCalls: 0,
+    semanticScholarSkippedOverLimit: 0,
+    semanticScholarResolved: 0,
   };
   const maxCrossrefCalls = limits.maxCrossrefCalls ?? DEFAULT_MAX_CROSSREF_CALLS;
   const maxOpenAlexCalls = limits.maxOpenAlexCalls ?? DEFAULT_MAX_OPENALEX_CALLS;
+  const maxSemanticScholarCalls =
+    limits.maxSemanticScholarCalls ?? DEFAULT_MAX_SEMANTIC_SCHOLAR_CALLS;
   const trace: ParseTraceEntry[] = [];
   let working = candidates.map((r, i) => ({ ref: r, refIndex: i }));
 
@@ -189,7 +205,7 @@ export async function enrichMetadata(
   // OpenAlex as a second source. Same fusion gate (title ≥ 0.92, year ±1)
   // applied to both — we never accept an external DOI without that
   // agreement.
-  if (clients.crossref || clients.openalex) {
+  if (clients.crossref || clients.openalex || clients.semanticScholar) {
     for (const slot of working) {
       const { ref, refIndex } = slot;
       if (ref.doi) continue;
@@ -204,14 +220,14 @@ export async function enrichMetadata(
         doi: string;
         titleRatio: number;
         yearDelta: number;
-        source: "crossref" | "openalex";
+        source: "crossref" | "openalex" | "semanticscholar";
       } | null = null;
       if (clients.crossref) {
         if (telemetry.crossrefCalls >= maxCrossrefCalls) {
           telemetry.crossrefSkippedOverLimit += 1;
         } else {
           telemetry.crossrefCalls += 1;
-          const cr = await clients.crossref.resolveByTitle(ref.title, ref.year);
+          const cr = await clients.crossref.resolveByTitle(ref.title, ref.year, ref.authors);
           if (cr) {
             resolved = {
               doi: cr.work.doi,
@@ -238,7 +254,7 @@ export async function enrichMetadata(
           telemetry.openalexSkippedOverLimit += 1;
         } else {
           telemetry.openalexCalls += 1;
-          const oa = await clients.openalex.resolveByTitle(ref.title, ref.year);
+          const oa = await clients.openalex.resolveByTitle(ref.title, ref.year, ref.authors);
           if (oa) {
             resolved = {
               doi: oa.work.doi,
@@ -255,6 +271,38 @@ export async function enrichMetadata(
               confidence: 0,
               accepted: false,
               reason: "openalex_title_below_threshold",
+            });
+          }
+        }
+      }
+
+      // 3c — Semantic Scholar third fallback.
+      if (!resolved && clients.semanticScholar) {
+        if (telemetry.semanticScholarCalls >= maxSemanticScholarCalls) {
+          telemetry.semanticScholarSkippedOverLimit += 1;
+        } else {
+          telemetry.semanticScholarCalls += 1;
+          const s2 = await clients.semanticScholar.resolveByTitle(
+            ref.title,
+            ref.year,
+            ref.authors,
+          );
+          if (s2) {
+            resolved = {
+              doi: s2.work.doi,
+              titleRatio: s2.titleRatio,
+              yearDelta: s2.yearDelta,
+              source: "semanticscholar",
+            };
+            telemetry.semanticScholarResolved += 1;
+          } else {
+            trace.push({
+              refIndex,
+              field: "doi",
+              source: "semanticscholar",
+              confidence: 0,
+              accepted: false,
+              reason: "s2_title_below_threshold",
             });
           }
         }

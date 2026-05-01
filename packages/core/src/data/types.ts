@@ -13,7 +13,8 @@ export type SourceTag =
   | "llm"
   | "crossref"
   | "europepmc"
-  | "openalex";
+  | "openalex"
+  | "semanticscholar";
 
 export interface FieldProvenance<T> {
   value: T;
@@ -274,6 +275,8 @@ export interface ManuscriptScreenResult {
     enrichmentFailures?: number;
     openalexCalls?: number;
     openalexResolved?: number;
+    semanticScholarCalls?: number;
+    semanticScholarResolved?: number;
   };
   consequentialUseWarning: string;
   generatedAt: string;

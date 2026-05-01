@@ -112,3 +112,82 @@ describe("acceptFusionMatch", () => {
     expect(TITLE_FUSION_THRESHOLD).toBe(0.92);
   });
 });
+
+describe("acceptFusionMatch — author surname gate", () => {
+  const T = "Stochastic blockchain for IoT data integrity";
+
+  it("accepts when one local surname appears in external authors", () => {
+    const out = acceptFusionMatch(
+      { title: T, year: 2018, authors: ["Chen, Y.-J.", "Lee, K."] },
+      { title: T, year: 2018, authors: ["Doe, J.", "Chen, Y.-J."] },
+    );
+    expect(out.accept).toBe(true);
+    expect(out.authorOverlap).toBe(true);
+  });
+
+  it("rejects when no local surname matches any external surname", () => {
+    const out = acceptFusionMatch(
+      { title: T, year: 2018, authors: ["Smith, A.", "Brown, B."] },
+      { title: T, year: 2018, authors: ["Doe, J.", "Chen, Y.-J."] },
+    );
+    expect(out.accept).toBe(false);
+    expect(out.reason).toBe("author_surname_mismatch");
+    expect(out.authorOverlap).toBe(false);
+  });
+
+  it("falls back to title+year when local has no authors (weak match)", () => {
+    const out = acceptFusionMatch(
+      { title: T, year: 2018 },
+      { title: T, year: 2018, authors: ["Doe, J."] },
+    );
+    expect(out.accept).toBe(true);
+    expect(out.reason).toBe("weak_match_no_authors");
+    expect(out.authorOverlap).toBe(false);
+  });
+
+  it("falls back to title+year when external has no authors", () => {
+    const out = acceptFusionMatch(
+      { title: T, year: 2018, authors: ["Chen, Y.-J."] },
+      { title: T, year: 2018, authors: [] },
+    );
+    expect(out.accept).toBe(true);
+    expect(out.reason).toBe("weak_match_no_authors");
+  });
+
+  it("normalizes diacritics (Müller ↔ Muller)", () => {
+    const out = acceptFusionMatch(
+      { title: T, year: 2018, authors: ["Müller, A."] },
+      { title: T, year: 2018, authors: ["Muller, Andreas"] },
+    );
+    expect(out.accept).toBe(true);
+    expect(out.authorOverlap).toBe(true);
+  });
+
+  it("handles 'Lastname F.' style on both sides", () => {
+    const out = acceptFusionMatch(
+      { title: T, year: 2018, authors: ["Chen Y.", "Lee K."] },
+      { title: T, year: 2018, authors: ["Y. Chen", "Doe J."] },
+    );
+    expect(out.accept).toBe(true);
+    expect(out.authorOverlap).toBe(true);
+  });
+
+  it("handles CJK surnames (李明 ↔ 李, 明)", () => {
+    const out = acceptFusionMatch(
+      { title: "中国数据完整性研究", year: 2020, authors: ["李 明", "王 芳"] },
+      { title: "中国数据完整性研究", year: 2020, authors: ["李 明"] },
+    );
+    expect(out.accept).toBe(true);
+    expect(out.authorOverlap).toBe(true);
+  });
+
+  it("ignores 'et al.' as a pseudo-author", () => {
+    const out = acceptFusionMatch(
+      { title: T, year: 2018, authors: ["et al."] },
+      { title: T, year: 2018, authors: ["Doe, J."] },
+    );
+    expect(out.accept).toBe(true);
+    // local surname set is empty, so falls through to weak match.
+    expect(out.reason).toBe("weak_match_no_authors");
+  });
+});

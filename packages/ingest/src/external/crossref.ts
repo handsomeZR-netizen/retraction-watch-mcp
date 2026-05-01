@@ -88,19 +88,20 @@ export class CrossrefClient {
 
   /**
    * Search Crossref by title and return the first candidate that passes
-   * `acceptFusionMatch` against the local title+year. Returns null if no
-   * candidate clears the threshold — caller MUST treat null as "no Crossref
-   * DOI is safe to assign", i.e. keep local extraction.
+   * `acceptFusionMatch` against the local title+year (+authors for surname
+   * cross-check). Returns null if no candidate clears the threshold —
+   * caller MUST treat null as "no Crossref DOI is safe to assign".
    */
   async resolveByTitle(
     localTitle: string,
     localYear: number | null,
+    localAuthors?: string[],
   ): Promise<CrossrefResolveResult | null> {
     const candidates = await this.searchByTitle(localTitle);
     for (const work of candidates) {
       const decision = acceptFusionMatch(
-        { title: localTitle, year: localYear },
-        { title: work.title, year: work.year },
+        { title: localTitle, year: localYear, authors: localAuthors },
+        { title: work.title, year: work.year, authors: work.authors },
       );
       if (decision.accept) {
         return {
