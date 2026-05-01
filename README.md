@@ -15,6 +15,7 @@ English · [简体中文](./README.zh.md)
 [![MCP](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](#-deploy)
 [![Tests](https://img.shields.io/badge/tests-184%20passing-brightgreen)](#-development)
+[![SafeSkill 50/100](https://img.shields.io/badge/SafeSkill-50%2F100_Use%20with%20Caution-orange)](https://safeskill.dev/scan/handsomezr-netizen-retraction-watch-mcp)
 
 [Quickstart](#-quickstart) · [Pipeline](#-the-identification-pipeline) · [Precision](#-recognition-precision) · [Web app](#-web-app) · [CLI](#%EF%B8%8F-cli) · [MCP](#-mcp-server) · [Deploy](#-deploy)
 
