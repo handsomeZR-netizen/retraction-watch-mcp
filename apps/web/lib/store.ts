@@ -223,6 +223,15 @@ export async function deleteUpload(manuscriptId: string): Promise<void> {
   await fs.rm(target, { recursive: true, force: true });
 }
 
+/**
+ * Delete upload directories whose manuscripts have aged out of retention.
+ *
+ * `isInProgress` is the caller's "do not touch" filter — historically only
+ * `parsing` manuscripts, but the cleanup caller now also lists `done` so a
+ * user's completed screening is never silently wiped. The parameter name is
+ * preserved for backwards compatibility with callers that genuinely only
+ * care about in-flight jobs.
+ */
 export async function deleteOldUploads(
   olderThanHours: number,
   options: { isInProgress?: (id: string) => boolean } = {},

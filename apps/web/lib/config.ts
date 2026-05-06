@@ -34,7 +34,13 @@ const DEFAULT_CONFIG: AppConfig = {
     cloudEnabled: false,
   },
   retention: {
-    keepUploads: false,
+    // Default to keeping all uploads. Earlier default was `false` which,
+    // combined with a buggy filter that only excluded `parsing` (not `done`)
+    // manuscripts, silently wiped users' completed screenings 24h after
+    // upload. Belt-and-braces: cleanup.ts now also protects `done`, but
+    // flipping this default means a fresh deploy doesn't auto-prune at all
+    // unless an operator opts in via config.json.
+    keepUploads: true,
     keepHours: 24,
   },
   enrichment: {
